@@ -195,6 +195,26 @@ export const localDB = {
     }
   },
 
+  saveReadingProgress: async (articleId: number, progress: number): Promise<void> => {
+    try {
+      const stored = await AsyncStorage.getItem('@BaoDienTu:reading_progress');
+      const data = stored ? JSON.parse(stored) : {};
+      data[articleId] = progress;
+      await AsyncStorage.setItem('@BaoDienTu:reading_progress', JSON.stringify(data));
+    } catch (e) {
+      console.error('Lỗi lưu tiến trình đọc:', e);
+    }
+  },
+
+  getReadingProgress: async (): Promise<{ [id: number]: number }> => {
+    try {
+      const stored = await AsyncStorage.getItem('@BaoDienTu:reading_progress');
+      return stored ? JSON.parse(stored) : {};
+    } catch (e) {
+      return {};
+    }
+  },
+
   // Initialize offline list from AsyncStorage to Zustand on App start
   syncInitialLocalData: async () => {
     try {
