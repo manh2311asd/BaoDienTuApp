@@ -1,74 +1,55 @@
-# The Daily
+# 📱 MOBILE APP (THE DAILY) — REACT NATIVE
 
-Ứng dụng đọc báo di động viết bằng React Native 0.81 và Expo SDK 54. Ứng dụng có luồng đọc tin công khai, tìm kiếm theo chuyên mục, bài VIP, bình luận, bài đã lưu, đọc ngoại tuyến, đọc thành tiếng, lịch và thời tiết.
+Phân hệ ứng dụng di động đọc báo dành cho độc giả và không gian làm việc của phóng viên/kiểm duyệt viên trên thiết bị di động, được phát triển bằng React Native 0.81 và Expo SDK 54.
 
-## Cấu hình
+---
 
-Yêu cầu Node.js 22+, Android Studio/JDK 17 cho Android và Xcode/CocoaPods cho iOS.
+## 👥 1. QUY TẮC LÀM VIỆC NHÓM (GIT WORKFLOW)
+Tất cả các lập trình viên Mobile App phải tuân thủ nghiêm ngặt quy tắc quản lý nhánh:
+1.  **Nhánh `main`:** Chứa mã nguồn hoàn thiện, ổn định nhất (Production-ready).
+2.  **Nhánh `dev`:** Chứa code được merge từ các nhánh tính năng (`feature/*`) để chạy thử nghiệm và kiểm thử.
+3.  **Tạo nhánh tính năng:** Bắt buộc đặt tên nhánh theo định dạng `feature/<Tên tính năng bằng tiếng Anh>` (Ví dụ: `feature/offline-reading`, `feature/tts-voice`).
+4.  **Tuyệt đối không push trực tiếp vào `main` hoặc `dev`:** Thực hiện đẩy code nhánh tính năng lên GitHub và tạo Pull Request (PR) để merge vào `dev`. Chỉ merge sau khi có ít nhất 1 thành viên review và duyệt code.
+5.  **Commit Message:** Commit message phải mô tả rõ ràng, cụ thể thay đổi đã thực hiện (Ví dụ: `feat: add offline detail screen`, `fix: correct token storage validation`).
 
-Sao chép `.env.example` thành `.env`, sau đó thay địa chỉ bằng URL của backend:
+---
 
-```env
-EXPO_PUBLIC_API_URL=http://192.168.1.10:8082
-```
+## 🛠️ 2. HƯỚNG DẪN CẤU HÌNH & KHỞI CHẠY
 
-Với thiết bị thật, máy chạy backend và điện thoại phải truy cập được cùng địa chỉ mạng. Với Android Emulator và backend chạy trên máy phát triển, có thể dùng `http://10.0.2.2:8082`.
+### Yêu cầu cấu hình hệ thống:
+*   Node.js phiên bản 22+.
+*   Ứng dụng **Expo Go** đã cài đặt trên điện thoại thật (hoặc cài Android Studio Emulator/Xcode iOS Simulator trên máy tính).
 
-## Chạy ứng dụng
+### Các bước khởi chạy:
 
-```sh
-npm install
-npm start
-```
+1.  **Cài đặt thư viện:**
+    Mở terminal tại thư mục `BaoDienTuApp` và chạy:
+    ```bash
+    npm install
+    ```
 
-Ở terminal khác:
+2.  **Cấu hình biến môi trường kết nối Backend:**
+    Sao chép tệp `.env.example` thành `.env` tại thư mục gốc của app và chỉnh sửa biến `EXPO_PUBLIC_API_URL` trỏ đến cổng **`8082`** của Backend:
+    *   **Nếu dùng máy ảo Android (Emulator):**
+        ```env
+        EXPO_PUBLIC_API_URL=http://10.0.2.2:8082
+        ```
+    *   **Nếu dùng thiết bị thật (quét QR):**
+        Hãy điền IP mạng cục bộ của máy tính của bạn (đảm bảo máy tính chạy backend và điện thoại bắt chung một sóng Wi-Fi):
+        ```env
+        EXPO_PUBLIC_API_URL=http://192.168.1.XX:8082
+        ```
 
-```sh
-npm run android
-```
+3.  **Khởi động Metro Bundler:**
+    ```bash
+    npx expo start
+    ```
+    *Mẹo: Chạy `npx expo start -c` để xóa bộ nhớ đệm (cache) cũ của Metro nếu gặp lỗi không cập nhật mã nguồn.*
 
-Trên macOS, cài pods trước khi chạy iOS:
+4.  **Mở app:**
+    *   **Android:** Mở ứng dụng **Expo Go** trên điện thoại, chọn quét mã QR hiển thị ở terminal.
+    *   **iOS:** Dùng camera mặc định của iPhone quét mã QR hiển thị ở terminal, chọn mở liên kết bằng Expo.
 
-```sh
-cd ios
-bundle exec pod install
-cd ..
-npm run ios
-```
+---
 
-## Kiểm tra chất lượng
-
-```sh
-npm run typecheck
-npm run lint
-npm test -- --runInBand
-npx expo install --check
-```
-
-Build APK debug:
-
-```sh
-cd android
-gradlew.bat assembleDebug
-```
-
-APK được tạo tại `android/app/build/outputs/apk/debug/app-debug.apk`. Đây là bản phát triển và cần Metro khi chạy; bản phát hành cần thêm keystore/signing riêng.
-
-## Lưu ý tích hợp backend
-
-- JWT được giữ trong SecureStore; metadata hồ sơ và thiết lập giao diện nằm trong AsyncStorage. Avatar được lưu theo tài khoản trên backend và được khôi phục khi đăng nhập lại.
-- Phía ứng dụng chỉ mở URL thanh toán do API trả về. Quyền VIP phải được backend kích hoạt sau callback thanh toán thành công.
-- API thời tiết/AQI dùng Open-Meteo; định vị chỉ được hỏi khi người dùng bật vị trí tự động.
-- Bài tải ngoại tuyến lưu phần chữ trên thiết bị và không tải ảnh từ mạng khi mở ở chế độ ngoại tuyến.
-- Trung tâm thông báo trong app lấy dữ liệu từ `/api/me/notifications`. Người dùng phải đăng nhập và chọn chủ đề quan tâm; bản hiện tại chưa gửi push notification ra thanh trạng thái hệ điều hành.
-- Tính năng nghe bài dùng giọng đọc có sẵn trên thiết bị. Trên Android, nếu chưa có giọng Việt, mở `Cài đặt > Văn bản sang giọng nói`, chọn Speech Services by Google và tải dữ liệu tiếng Việt.
-
-## Không gian tác nghiệp
-
-Ứng dụng tự hiển thị khu vực tác nghiệp trong trang Cá nhân theo role của JWT:
-
-- `AUTHOR`: xem bài theo trạng thái, soạn bài, lưu nháp, xem trước và gửi duyệt.
-- `CENSOR`: đọc toàn bộ bài đang chờ, duyệt hoặc trả lại kèm lý do.
-- `ADMIN`: có quyền kiểm duyệt, ẩn/hiện bài và quản lý role/trạng thái tài khoản.
-
-Ảnh bìa có thể được chọn trực tiếp từ điện thoại hoặc nhập bằng URL công khai. Ảnh tải từ điện thoại được gửi tới `/api/media` và lưu trong kho dữ liệu dùng chung của backend; giới hạn 5 MB, hỗ trợ JPEG, PNG và WebP.
+*Để tìm hiểu sâu hơn về kiến trúc đồng bộ dữ liệu và danh sách API Endpoints chi tiết của dự án, vui lòng đọc [README gốc của dự án](file:///d:/appbao/README.md).*
