@@ -22,8 +22,14 @@ import {
   Clock3,
   Crown,
   Download,
+  HelpCircle,
   LogOut,
+  Package2,
+  Palette,
   Settings,
+  Shield,
+  Type,
+  User2,
   X,
 } from 'lucide-react-native';
 import { localDB } from '../../services/localDB';
@@ -57,6 +63,7 @@ export default function ProfileScreen() {
     offlineIds,
     setUser,
     user,
+    themeMode,
   } = useAppStore();
   const colors = getColors();
   const [showSettings, setShowSettings] = useState(false);
@@ -66,12 +73,14 @@ export default function ProfileScreen() {
   const [showLogoutConfirmation, setShowLogoutConfirmation] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
   const [recentArticles, setRecentArticles] = useState<Article[]>([]);
+  const [readingProgress, setReadingProgress] = useState<{ [id: number]: number }>({});
   const [selectedTopics, setSelectedTopics] = useState<Category[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
 
   useFocusEffect(
     useCallback(() => {
       localDB.getRecentArticles().then(setRecentArticles);
+      localDB.getReadingProgress().then(setReadingProgress);
       if (user) {
         Promise.allSettled([
           apiClient.getUserPreferences(),
@@ -196,7 +205,11 @@ export default function ProfileScreen() {
       : user.role === 'CENSOR'
         ? 'Đọc và xử lý các bài đang chờ xuất bản.'
         : 'Duyệt bài, quản lý xuất bản và phân quyền tài khoản.';
-  const recentArticle = recentArticles[0];
+  const recentArticle = recentArticles.find((art) => {
+    const progress = readingProgress[art.id] || 0;
+    return progress > 0.05 && progress < 0.85;
+  });
+  const isDark = themeMode === 'dark';
 
   return (
     <SafeAreaView
@@ -208,10 +221,7 @@ export default function ProfileScreen() {
         showsVerticalScrollIndicator={false}
       >
         <View
-          style={[
-            styles.profileCard,
-            { backgroundColor: colors.card, borderColor: colors.border },
-          ]}
+          style={styles.profileCard}
         >
           <View style={styles.profileHeader}>
             <TouchableOpacity
@@ -230,7 +240,7 @@ export default function ProfileScreen() {
                 </View>
               )}
               <View style={[styles.cameraBadge, { backgroundColor: colors.card }]}>
-                <Camera color={colors.text} size={13} {...IC} />
+                <Camera color={colors.text} size={11} {...IC} />
               </View>
             </TouchableOpacity>
 
@@ -244,23 +254,23 @@ export default function ProfileScreen() {
               <View
                 style={[
                   styles.roleBadge,
-                  { backgroundColor: isVip ? '#FBF3DB' : '#E1F3FE' },
+                  { backgroundColor: isVip ? '#FAF5EF' : '#EAEAEA' },
                 ]}
               >
                 <Text
                   style={[
                     styles.roleText,
-                    { color: isVip ? '#956400' : '#1F6C9F' },
+                    { color: isVip ? '#7A5200' : colors.textMuted },
                   ]}
                 >
-                  {user.role}
+                  {user.role === 'VIP' ? 'VIP' : 'MEMBER'}
                 </Text>
               </View>
             </View>
 
             <TouchableOpacity
               accessibilityLabel="Mở cài đặt"
-              style={[styles.iconButton, { borderColor: colors.border }]}
+              style={styles.iconButton}
               onPress={() => setShowSettings(true)}
             >
               <Settings color={colors.text} size={19} {...IC} />
@@ -292,6 +302,56 @@ export default function ProfileScreen() {
           </View>
         </View>
 
+        {!isVip && (
+          <TouchableOpacity
+            activeOpacity={0.84}
+            style={[
+              styles.vipUpgradeCard,
+              {
+                backgroundColor: isDark ? '#252218' : '#FAF8F5',
+                borderColor: isDark ? '#B09A56' : '#DDD1A8',
+              },
+            ]}
+            onPress={() => navigation.navigate('VipPackages')}
+          >
+            <View style={styles.vipUpgradeTop}>
+              <View
+                style={[
+                  styles.vipIconBox,
+                  { backgroundColor: isDark ? '#302B1C' : '#EFE9D8' },
+                ]}
+              >
+                <Crown color="#7A5200" size={17} {...IC} />
+              </View>
+              <Text style={styles.vipEyebrow}>THE DAILY VIP</Text>
+            </View>
+            <Text style={[styles.vipUpgradeTitle, { color: colors.text }]}>
+              Nâng cấp trải nghiệm đọc
+            </Text>
+            <Text
+              style={[styles.vipUpgradeDescription, { color: colors.textMuted }]}
+            >
+              Đọc bài VIP không giới hạn và sử dụng tính năng tóm tắt bằng AI.
+            </Text>
+            <View
+              style={[
+                styles.vipUpgradeAction,
+                { borderTopColor: isDark ? '#3D3420' : '#DDD1A8' },
+              ]}
+            >
+              <Text
+                style={[
+                  styles.vipUpgradeActionText,
+                  { color: isDark ? '#C9AB5F' : '#7A5200' },
+                ]}
+              >
+                Xem các gói thành viên
+              </Text>
+              <ChevronRight color={isDark ? '#C9AB5F' : '#7A5200'} size={16} {...IC} />
+            </View>
+          </TouchableOpacity>
+        )}
+
         {hasStaffWorkspace && (
           <TouchableOpacity
             activeOpacity={0.78}
@@ -321,234 +381,123 @@ export default function ProfileScreen() {
           </TouchableOpacity>
         )}
 
-        <View
-          style={[
-            styles.personalCard,
-            { backgroundColor: colors.card, borderColor: colors.border },
-          ]}
-        >
-          <View style={styles.sectionHeader}>
-            <View>
-              <Text style={[styles.sectionEyebrow, { color: colors.primary }]}>
-                KHÔNG GIAN CỦA BẠN
-              </Text>
-              <Text style={[styles.sectionTitle, { color: colors.text }]}>
-                Đọc tiếp và quản lý
-              </Text>
+        {/* Library Items List with Divider */}
+        <View style={styles.settingsList}>
+          <TouchableOpacity
+            style={[styles.settingsRow, { borderBottomColor: colors.border }]}
+            onPress={() => navigation.navigate('LibraryTab', { initialSection: 'saved' })}
+          >
+            <Bookmark color={colors.text} size={17} {...IC} />
+            <View style={styles.settingsRowBody}>
+              <Text style={[styles.settingsRowLabel, { color: colors.text }]}>Bài đã lưu</Text>
+              <Text style={[styles.settingsRowSub, { color: colors.textMuted }]}>{bookmarkedIds.length} bài</Text>
             </View>
-          </View>
-
-          <View style={[styles.quickGrid, { borderColor: colors.border }]}>
-            <TouchableOpacity
-              style={[
-                styles.quickItem,
-                styles.quickItemDivider,
-                { borderColor: colors.border },
-              ]}
-              onPress={() =>
-                navigation.navigate('LibraryTab', { initialSection: 'saved' })
-              }
-            >
-              <Bookmark color={colors.primary} size={20} {...IC} />
-              <Text style={[styles.quickCount, { color: colors.text }]}>
-                {bookmarkedIds.length}
-              </Text>
-              <Text style={[styles.quickLabel, { color: colors.textMuted }]}>
-                Đã lưu
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[
-                styles.quickItem,
-                styles.quickItemDivider,
-                { borderColor: colors.border },
-              ]}
-              onPress={() =>
-                navigation.navigate('LibraryTab', {
-                  initialSection: 'downloaded',
-                })
-              }
-            >
-              <Download color={colors.secondary} size={20} {...IC} />
-              <Text style={[styles.quickCount, { color: colors.text }]}>
-                {offlineIds.length}
-              </Text>
-              <Text style={[styles.quickLabel, { color: colors.textMuted }]}>
-                Offline
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[
-                styles.quickItem,
-                { borderColor: colors.border },
-              ]}
-              onPress={() =>
-                navigation.navigate('LibraryTab', {
-                  initialSection: 'history',
-                })
-              }
-            >
-              <Clock3 color={colors.warning} size={20} {...IC} />
-              <Text style={[styles.quickCount, { color: colors.text }]}>
-                {recentArticles.length}
-              </Text>
-              <Text style={[styles.quickLabel, { color: colors.textMuted }]}>
-                Lịch sử
-              </Text>
-            </TouchableOpacity>
-          </View>
-
-          {recentArticle && (
-            <TouchableOpacity
-              activeOpacity={0.82}
-              style={[styles.continueRow, { borderTopColor: colors.border }]}
-              onPress={() =>
-                navigation.navigate('ArticleDetail', {
-                  articleId: recentArticle.id,
-                  articleType: recentArticle.type,
-                })
-              }
-            >
-              <View
-                style={[
-                  styles.continueIcon,
-                  { backgroundColor: colors.background },
-                ]}
-              >
-                <Clock3 color={colors.primary} size={18} {...IC} />
-              </View>
-              <View style={styles.continueCopy}>
-                <Text style={[styles.continueLabel, { color: colors.textMuted }]}>
-                  ĐỌC TIẾP
-                </Text>
-                <Text
-                  style={[styles.continueTitle, { color: colors.text }]}
-                  numberOfLines={2}
-                >
-                  {recentArticle.title}
-                </Text>
-              </View>
-              <ChevronRight color={colors.textMuted} size={18} {...IC} />
-            </TouchableOpacity>
-          )}
+            <ChevronRight color={colors.textMuted} size={16} {...IC} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.settingsRow, { borderBottomColor: colors.border }]}
+            onPress={() => navigation.navigate('LibraryTab', { initialSection: 'downloaded' })}
+          >
+            <Download color={colors.text} size={17} {...IC} />
+            <View style={styles.settingsRowBody}>
+              <Text style={[styles.settingsRowLabel, { color: colors.text }]}>Bài offline</Text>
+              <Text style={[styles.settingsRowSub, { color: colors.textMuted }]}>{offlineIds.length} bài</Text>
+            </View>
+            <ChevronRight color={colors.textMuted} size={16} {...IC} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.settingsRow, { borderBottomColor: colors.border }]}
+            onPress={() => navigation.navigate('LibraryTab', { initialSection: 'history' })}
+          >
+            <Clock3 color={colors.text} size={17} {...IC} />
+            <View style={styles.settingsRowBody}>
+              <Text style={[styles.settingsRowLabel, { color: colors.text }]}>Lịch sử đọc</Text>
+            </View>
+            <ChevronRight color={colors.textMuted} size={16} {...IC} />
+          </TouchableOpacity>
         </View>
 
-        <TouchableOpacity
-          activeOpacity={0.78}
-          style={[
-            styles.followingCard,
-            { backgroundColor: colors.card, borderColor: colors.border },
-          ]}
-          onPress={() => navigation.navigate('Notifications')}
-        >
-          <View style={styles.followingHeader}>
-            <View>
-              <Text style={[styles.sectionEyebrow, { color: colors.primary }]}>
-                DÒNG TIN CÁ NHÂN
-              </Text>
-              <Text style={[styles.sectionTitle, { color: colors.text }]}>
-                Chủ đề của bạn
-              </Text>
-            </View>
-            <View style={styles.notificationSummary}>
-              <Bell color={colors.primary} size={17} {...IC} />
-              {unreadCount > 0 && (
-                <View style={styles.notificationCount}>
-                  <Text style={styles.notificationCountText}>
-                    {unreadCount > 99 ? '99+' : unreadCount}
-                  </Text>
-                </View>
-              )}
-            </View>
-          </View>
-
-          {selectedTopics.length > 0 ? (
-            <View style={styles.topicPreview}>
-              {selectedTopics.slice(0, 5).map((topic) => (
-                <View
-                  key={topic.id}
-                  style={[
-                    styles.topicBadge,
-                    {
-                      backgroundColor: colors.background,
-                      borderColor: colors.border,
-                    },
-                  ]}
-                >
-                  <Text style={[styles.topicBadgeText, { color: colors.text }]}>
-                    {topic.name}
-                  </Text>
-                </View>
-              ))}
-            </View>
-          ) : (
-            <View
-              style={[
-                styles.followingEmpty,
-                { backgroundColor: colors.background, borderColor: colors.border },
-              ]}
-            >
-              <Bell color={colors.textMuted} size={22} {...IC} />
-              <View style={styles.followingEmptyCopy}>
-                <Text style={[styles.followingName, { color: colors.text }]}>
-                  Chưa chọn chủ đề
-                </Text>
-                <Text style={[styles.followingHint, { color: colors.textMuted }]}>
-                  Chọn Công nghệ, Đời sống hoặc chủ đề bạn muốn nhận tin.
-                </Text>
-              </View>
-            </View>
-          )}
-
-          <View style={[styles.topicAction, { borderTopColor: colors.border }]}>
-            <Text style={[styles.seeAll, { color: colors.primary }]}>
-              Quản lý chủ đề và thông báo
-            </Text>
-            <ChevronRight color={colors.primary} size={18} {...IC} />
-          </View>
-        </TouchableOpacity>
-
-        {!isVip && (
+        {/* Settings list - document style */}
+        <View style={styles.settingsList}>
           <TouchableOpacity
-            activeOpacity={0.84}
-            style={[
-              styles.vipUpgradeCard,
-              { backgroundColor: colors.card, borderColor: colors.border },
-            ]}
+            style={[styles.settingsRow, { borderBottomColor: colors.border }]}
+            onPress={() => setShowSettings(true)}
+          >
+            <User2 color={colors.text} size={17} {...IC} />
+            <View style={styles.settingsRowBody}>
+              <Text style={[styles.settingsRowLabel, { color: colors.text }]}>Cài đặt tài khoản</Text>
+            </View>
+            <ChevronRight color={colors.textMuted} size={16} {...IC} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.settingsRow, { borderBottomColor: colors.border }]}
             onPress={() => navigation.navigate('VipPackages')}
           >
-            <View style={styles.vipUpgradeTop}>
-              <View style={styles.vipIconBox}>
-                <Crown color="#956400" size={19} {...IC} />
-              </View>
-              <Text style={styles.vipEyebrow}>THE DAILY VIP</Text>
+            <Package2 color={colors.text} size={17} {...IC} />
+            <View style={styles.settingsRowBody}>
+              <Text style={[styles.settingsRowLabel, { color: colors.text }]}>Gói thành viên</Text>
             </View>
-            <Text style={[styles.vipUpgradeTitle, { color: colors.text }]}>
-              Nâng cấp trải nghiệm đọc
-            </Text>
-            <Text
-              style={[styles.vipUpgradeDescription, { color: colors.textMuted }]}
-            >
-              Đọc bài VIP không giới hạn và sử dụng tính năng tóm tắt bằng AI.
-            </Text>
-            <View style={[styles.vipUpgradeAction, { borderTopColor: colors.border }]}>
-              <Text style={[styles.vipUpgradeActionText, { color: colors.primary }]}>
-                Xem các gói thành viên
-              </Text>
-              <ChevronRight color={colors.primary} size={18} {...IC} />
-            </View>
+            <ChevronRight color={colors.textMuted} size={16} {...IC} />
           </TouchableOpacity>
-        )}
-
-        <TouchableOpacity
-          style={[styles.logoutButton, { borderColor: colors.border }]}
-          onPress={signOut}
-        >
-          <LogOut color={colors.danger} size={17} {...IC} />
-          <Text style={[styles.logoutText, { color: colors.danger }]}>
-            Đăng xuất
-          </Text>
-        </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.settingsRow, { borderBottomColor: colors.border }]}
+            onPress={() => navigation.navigate('Notifications')}
+          >
+            <Bell color={colors.text} size={17} {...IC} />
+            <View style={styles.settingsRowBody}>
+              <Text style={[styles.settingsRowLabel, { color: colors.text }]}>Thông báo</Text>
+            </View>
+            <ChevronRight color={colors.textMuted} size={16} {...IC} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.settingsRow, { borderBottomColor: colors.border }]}
+            onPress={() => setShowSettings(true)}
+          >
+            <Type color={colors.text} size={17} {...IC} />
+            <View style={styles.settingsRowBody}>
+              <Text style={[styles.settingsRowLabel, { color: colors.text }]}>Cỡ chữ</Text>
+            </View>
+            <ChevronRight color={colors.textMuted} size={16} {...IC} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.settingsRow, { borderBottomColor: colors.border }]}
+            onPress={() => setShowSettings(true)}
+          >
+            <Palette color={colors.text} size={17} {...IC} />
+            <View style={styles.settingsRowBody}>
+              <Text style={[styles.settingsRowLabel, { color: colors.text }]}>Giao diện</Text>
+            </View>
+            <ChevronRight color={colors.textMuted} size={16} {...IC} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.settingsRow, { borderBottomColor: colors.border }]}
+          >
+            <Shield color={colors.text} size={17} {...IC} />
+            <View style={styles.settingsRowBody}>
+              <Text style={[styles.settingsRowLabel, { color: colors.text }]}>Quyền riêng tư</Text>
+            </View>
+            <ChevronRight color={colors.textMuted} size={16} {...IC} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.settingsRow, { borderBottomColor: colors.border }]}
+          >
+            <HelpCircle color={colors.text} size={17} {...IC} />
+            <View style={styles.settingsRowBody}>
+              <Text style={[styles.settingsRowLabel, { color: colors.text }]}>Trợ giúp</Text>
+            </View>
+            <ChevronRight color={colors.textMuted} size={16} {...IC} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.settingsRow}
+            onPress={signOut}
+          >
+            <LogOut color={colors.danger} size={17} {...IC} />
+            <View style={styles.settingsRowBody}>
+              <Text style={[styles.settingsRowLabel, { color: colors.danger }]}>Đăng xuất</Text>
+            </View>
+            <ChevronRight color={colors.textMuted} size={16} {...IC} />
+          </TouchableOpacity>
+        </View>
       </ScrollView>
 
       <ReadingPreferencesSheet
@@ -650,10 +599,11 @@ const styles = StyleSheet.create({
     paddingBottom: 40,
   },
   profileCard: {
-    paddingHorizontal: 18,
-    paddingTop: 20,
-    paddingBottom: 18,
-    borderBottomWidth: 1,
+    marginTop: 14,
+    paddingHorizontal: 6,
+    paddingTop: 14,
+    paddingBottom: 14,
+    marginHorizontal: 14,
   },
   profileHeader: {
     flexDirection: 'row',
@@ -701,7 +651,7 @@ const styles = StyleSheet.create({
     marginTop: 8,
     paddingHorizontal: 8,
     paddingVertical: 3,
-    borderRadius: 999,
+    borderRadius: 4,
   },
   roleText: {
     fontSize: 9,
@@ -712,8 +662,9 @@ const styles = StyleSheet.create({
     marginTop: 10,
     paddingHorizontal: 18,
     paddingTop: 19,
-    borderTopWidth: 1,
-    borderBottomWidth: 1,
+    borderWidth: 1,
+    borderRadius: 10,
+    marginHorizontal: 14,
   },
   staffEyebrow: {
     fontSize: 9,
@@ -747,10 +698,8 @@ const styles = StyleSheet.create({
     fontSize: 19,
   },
   iconButton: {
-    width: 40,
-    height: 40,
-    borderWidth: 1,
-    borderRadius: 6,
+    width: 48,
+    height: 48,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -779,8 +728,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
     paddingTop: 20,
     paddingBottom: 18,
-    borderTopWidth: 1,
-    borderBottomWidth: 1,
+    borderWidth: 1,
+    borderRadius: 8,
+    marginHorizontal: 12,
   },
   sectionHeader: {
     flexDirection: 'row',
@@ -849,19 +799,45 @@ const styles = StyleSheet.create({
     letterSpacing: 0.7,
   },
   continueTitle: {
-    marginTop: 3,
     fontFamily: F_SERIF,
     fontSize: 13,
     fontWeight: '700',
     lineHeight: 17,
+  },
+  continueImage: {
+    width: 44,
+    height: 44,
+    borderRadius: 6,
+    backgroundColor: '#F7F6F3',
+  },
+  progressBarBg: {
+    height: 3,
+    backgroundColor: '#EAEAEA',
+    borderRadius: 1.5,
+    marginTop: 5,
+    width: '100%',
+    overflow: 'hidden',
+  },
+  progressBarFill: {
+    height: '100%',
+    borderRadius: 1.5,
   },
   followingCard: {
     marginTop: 10,
     paddingHorizontal: 18,
     paddingTop: 20,
     paddingBottom: 16,
-    borderTopWidth: 1,
-    borderBottomWidth: 1,
+    borderWidth: 1,
+    borderRadius: 8,
+    marginHorizontal: 12,
+  },
+  iconBox: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 4,
   },
   followingHeader: {
     flexDirection: 'row',
@@ -970,12 +946,13 @@ const styles = StyleSheet.create({
     marginHorizontal: 11,
   },
   vipUpgradeCard: {
-    marginTop: 10,
-    paddingHorizontal: 18,
-    paddingTop: 20,
-    paddingBottom: 18,
-    borderTopWidth: 1,
-    borderBottomWidth: 1,
+    marginTop: 12,
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 12,
+    borderWidth: 1,
+    borderRadius: 10,
+    marginHorizontal: 14,
   },
   vipUpgradeTop: {
     flexDirection: 'row',
@@ -997,19 +974,19 @@ const styles = StyleSheet.create({
     letterSpacing: 0.8,
   },
   vipUpgradeTitle: {
-    marginTop: 14,
+    marginTop: 10,
     fontFamily: F_SERIF,
-    fontSize: 19,
+    fontSize: 17,
     fontWeight: '700',
   },
   vipUpgradeDescription: {
-    marginTop: 5,
-    fontSize: 13,
-    lineHeight: 19,
+    marginTop: 4,
+    fontSize: 12,
+    lineHeight: 17,
   },
   vipUpgradeAction: {
-    marginTop: 14,
-    paddingTop: 13,
+    marginTop: 10,
+    paddingTop: 10,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -1139,5 +1116,33 @@ const styles = StyleSheet.create({
     marginLeft: 8,
     fontSize: 13,
     fontWeight: '700',
+  },
+  settingsList: {
+    marginTop: 12,
+    marginHorizontal: 14,
+    borderWidth: 1,
+    borderRadius: 10,
+    overflow: 'hidden',
+    marginBottom: 36,
+  },
+  settingsRow: {
+    minHeight: 52,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  settingsRowBody: {
+    flex: 1,
+    marginLeft: 14,
+  },
+  settingsRowLabel: {
+    fontSize: 15,
+    fontWeight: '500',
+  },
+  settingsRowSub: {
+    marginTop: 2,
+    fontSize: 12,
   },
 });

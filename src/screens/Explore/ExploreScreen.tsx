@@ -12,8 +12,8 @@ import {
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Bell, Check, Eye, Search, Star, Users } from 'lucide-react-native';
-import { Article } from '../../types/content';
+import { Activity, Bell, BookOpen, Check, Eye, Heart, Laptop, Landmark, Search, Star, Users } from 'lucide-react-native';
+import { Article, Category } from '../../types/content';
 import { apiClient } from '../../services/api/client';
 import { useAppStore } from '../../store/useAppStore';
 import { useToast } from '../../components/Toast/ToastContext';
@@ -33,6 +33,11 @@ const F_SERIF = Platform.select({
   android: 'serif',
   default: 'serif',
 });
+const F_SANS = Platform.select({
+  ios: 'Helvetica Neue',
+  android: 'sans-serif',
+  default: 'System',
+});
 const IC = { strokeWidth: 2 } as const;
 
 export default function ExploreScreen({ navigation }: any) {
@@ -49,6 +54,7 @@ export default function ExploreScreen({ navigation }: any) {
   const { showToast } = useToast();
   const [section, setSection] = useState<ExploreSection>('latest');
   const [articles, setArticles] = useState<Article[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(true);
   const [followLoadingId, setFollowLoadingId] = useState<number | null>(null);
@@ -56,8 +62,12 @@ export default function ExploreScreen({ navigation }: any) {
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const response = await apiClient.searchArticles();
-      setArticles(response.data || []);
+      const [artRes, catRes] = await Promise.all([
+        apiClient.searchArticles(),
+        apiClient.getCategories(),
+      ]);
+      setArticles(artRes.data || []);
+      setCategories(catRes.data || []);
     } catch (error) {
       showToast(
         error instanceof Error
@@ -155,70 +165,145 @@ export default function ExploreScreen({ navigation }: any) {
     }
   };
 
-  const renderArticle = ({ item }: { item: Article }) => (
-    <TouchableOpacity
-      activeOpacity={0.82}
-      style={[styles.articleRow, { borderBottomColor: colors.border }]}
-      onPress={() =>
-        navigation.navigate('ArticleDetail', {
-          articleId: item.id,
-          articleType: item.type,
-        })
-      }
-    >
-      <View style={styles.articleCopy}>
-        <View style={styles.articleMetaTop}>
-          <Text style={[styles.category, { color: colors.primary }]}>
-            {(item.categoryName || 'Tin tức').toUpperCase()}
-          </Text>
-          {item.type === 'VIP' && (
-            <View style={styles.vipBadge}>
-              <Star color="#956400" fill="#956400" size={9} {...IC} />
-              <Text style={styles.vipText}>VIP</Text>
-            </View>
-          )}
-        </View>
-        <Text
-          numberOfLines={fontSize === 'xlarge' ? 4 : 3}
+  const renderArticle = ({ item, index }: { item: Article; index: number }) => {
+    const isFirst = index === 0 && !query && section === 'latest';
+    if (isFirst) {
+      return (
+        <TouchableOpacity
+          activeOpacity={0.85}
           style={[
-            styles.articleTitle,
-            {
-              color: colors.text,
-              fontSize: scaleFont(17, fontSize),
-              lineHeight: scaleLineHeight(22, fontSize),
-            },
+            styles.firstArticleCard,
+            { backgroundColor: colors.card, borderColor: colors.border },
           ]}
+          onPress={() =>
+            navigation.navigate('ArticleDetail', {
+              articleId: item.id,
+              articleType: item.type,
+            })
+          }
         >
-          {item.title}
-        </Text>
-        <View style={styles.articleFooter}>
-          <Text style={[styles.author, { color: colors.textMuted }]}>
-            {item.authorName}
+          {showImages && item.coverImage ? (
+            <Image source={{ uri: item.coverImage }} style={styles.firstThumbnail} />
+          ) : (
+            <View
+              style={[
+                styles.firstThumbnail,
+                { backgroundColor: colors.border },
+              ]}
+            />
+          )}
+          <View style={styles.firstArticleContent}>
+            <View style={styles.articleMetaTop}>
+              <Text style={[styles.category, { color: colors.primary }]}>
+                {(item.categoryName || 'Tin tức').toUpperCase()}
+              </Text>
+              {item.type === 'VIP' && (
+                <View style={styles.vipBadge}>
+                  <Star color="#7A5200" fill="#7A5200" size={9} {...IC} />
+                  <Text style={styles.vipText}>VIP</Text>
+                </View>
+              )}
+            </View>
+            <Text
+              numberOfLines={3}
+              style={[
+                styles.firstArticleTitle,
+                {
+                  color: colors.text,
+                  fontSize: scaleFont(19, fontSize),
+                  lineHeight: scaleLineHeight(25, fontSize),
+                },
+              ]}
+            >
+              {item.title}
+            </Text>
+            <View style={styles.articleFooter}>
+              <Text style={[styles.author, { color: colors.textMuted }]}>
+                {item.authorName}
+              </Text>
+              <Eye color={colors.textMuted} size={12} {...IC} />
+              <Text style={[styles.viewCount, { color: colors.textMuted }]}>
+                {item.viewCount}
+              </Text>
+            </View>
+          </View>
+        </TouchableOpacity>
+      );
+    }
+
+    return (
+      <TouchableOpacity
+        activeOpacity={0.82}
+        style={[
+          styles.articleRow,
+          { backgroundColor: colors.card, borderColor: colors.border },
+        ]}
+        onPress={() =>
+          navigation.navigate('ArticleDetail', {
+            articleId: item.id,
+            articleType: item.type,
+          })
+        }
+      >
+        <View style={styles.articleCopy}>
+          <View style={styles.articleMetaTop}>
+            <Text style={[styles.category, { color: colors.primary }]}>
+              {(item.categoryName || 'Tin tức').toUpperCase()}
+            </Text>
+            {item.type === 'VIP' && (
+              <View style={styles.vipBadge}>
+                <Star color="#7A5200" fill="#7A5200" size={9} {...IC} />
+                <Text style={styles.vipText}>VIP</Text>
+              </View>
+            )}
+          </View>
+          <Text
+            numberOfLines={3}
+            style={[
+              styles.articleTitle,
+              {
+                color: colors.text,
+                fontSize: scaleFont(15, fontSize),
+                lineHeight: scaleLineHeight(20, fontSize),
+              },
+            ]}
+          >
+            {item.title}
           </Text>
-          <Eye color={colors.textMuted} size={12} {...IC} />
-          <Text style={[styles.viewCount, { color: colors.textMuted }]}>
-            {item.viewCount}
-          </Text>
+          <View style={styles.articleFooter}>
+            <Text style={[styles.author, { color: colors.textMuted }]}>
+              {item.authorName}
+            </Text>
+            <Eye color={colors.textMuted} size={12} {...IC} />
+            <Text style={[styles.viewCount, { color: colors.textMuted }]}>
+              {item.viewCount}
+            </Text>
+          </View>
         </View>
-      </View>
-      {showImages && item.coverImage ? (
-        <Image source={{ uri: item.coverImage }} style={styles.thumbnail} />
-      ) : (
-        <View
-          style={[
-            styles.thumbnail,
-            styles.thumbnailPlaceholder,
-            { backgroundColor: colors.border },
-          ]}
-        />
-      )}
-    </TouchableOpacity>
-  );
+        {showImages && item.coverImage ? (
+          <Image source={{ uri: item.coverImage }} style={styles.thumbnail} />
+        ) : (
+          <View
+            style={[
+              styles.thumbnail,
+              styles.thumbnailPlaceholder,
+              { backgroundColor: colors.border },
+            ]}
+          />
+        )}
+      </TouchableOpacity>
+    );
+  };
 
   const renderAuthor = ({ item }: { item: AuthorSummary }) => {
     const followed = isFollowing(item.id);
     return (
-      <View style={[styles.authorRow, { borderBottomColor: colors.border }]}>
+      <View
+        style={[
+          styles.authorRow,
+          { backgroundColor: colors.card, borderColor: colors.border },
+        ]}
+      >
         <TouchableOpacity
           style={styles.authorIdentity}
           onPress={() =>
@@ -276,6 +361,61 @@ export default function ExploreScreen({ navigation }: any) {
     );
   };
 
+  const getCategoryStyle = (name: string) => {
+    const n = name.toLowerCase();
+    if (n.includes('công nghệ') || n.includes('tech') || n.includes('số')) {
+      return { bg: '#E1F3FE', color: '#1F6C9F', icon: <Laptop color="#1F6C9F" size={18} {...IC} /> };
+    }
+    if (n.includes('đời sống') || n.includes('sống')) {
+      return { bg: '#EDF3EC', color: '#346538', icon: <Heart color="#346538" size={18} {...IC} /> };
+    }
+    if (n.includes('kinh doanh') || n.includes('tài chính')) {
+      return { bg: '#FBF3DB', color: '#8B6200', icon: <Landmark color="#8B6200" size={18} {...IC} /> };
+    }
+    if (n.includes('sức khỏe') || n.includes('y tế')) {
+      return { bg: '#FDEBEC', color: '#A62624', icon: <Activity color="#A62624" size={18} {...IC} /> };
+    }
+    if (n.includes('khoa học')) {
+      return { bg: '#F2EBF9', color: '#7E57C2', icon: <Star color="#7E57C2" size={18} {...IC} /> };
+    }
+    return { bg: '#F0EFED', color: '#72736F', icon: <BookOpen color="#72736F" size={18} {...IC} /> };
+  };
+
+  const renderCategoryGrid = () => {
+    if (query || section !== 'latest' || categories.length === 0) return null;
+    return (
+      <View style={styles.gridContainer}>
+        <Text style={[styles.gridTitle, { color: colors.text }]}>Chủ đề nổi bật</Text>
+        <View style={styles.grid}>
+          {categories.slice(0, 6).map((cat) => {
+            const catStyle = getCategoryStyle(cat.name);
+            const count = articles.filter((a) => a.categoryId === cat.id).length;
+            return (
+              <TouchableOpacity
+                key={cat.id}
+                style={[styles.gridItem, { backgroundColor: catStyle.bg, borderColor: colors.border }]}
+                activeOpacity={0.75}
+                onPress={() => setQuery(cat.name)}
+              >
+                <View style={styles.gridItemHeader}>
+                  {catStyle.icon}
+                  {count > 0 && (
+                    <Text style={[styles.gridItemCount, { color: catStyle.color }]}>
+                      {count} bài
+                    </Text>
+                  )}
+                </View>
+                <Text style={[styles.gridItemName, { color: colors.text }]}>
+                  {cat.name}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      </View>
+    );
+  };
+
   const data = section === 'journalists' ? authors : visibleArticles;
 
   return (
@@ -284,15 +424,9 @@ export default function ExploreScreen({ navigation }: any) {
       style={[styles.root, { backgroundColor: colors.background }]}
     >
       <View style={[styles.header, { borderBottomColor: colors.border }]}>
-        <View style={styles.eyebrowRow}>
-          <Users color={colors.primary} size={15} {...IC} />
-          <Text style={[styles.eyebrow, { color: colors.primary }]}>
-            DÒNG TIN THEO NHỊP ĐỌC
-          </Text>
-        </View>
         <Text style={[styles.heading, { color: colors.text }]}>Khám phá</Text>
         <Text style={[styles.subheading, { color: colors.textMuted }]}>
-          Xem tin mới, tin được đọc nhiều và mở hồ sơ tác giả từ từng bài viết.
+          Xem tin mới, tin được đọc nhiều và tìm theo chủ đề.
         </Text>
 
         <View
@@ -315,26 +449,27 @@ export default function ExploreScreen({ navigation }: any) {
           {[
             { value: 'latest' as const, label: 'Mới nhất' },
             { value: 'popular' as const, label: 'Xem nhiều' },
+            { value: 'journalists' as const, label: 'Tác giả' },
           ].map((item) => {
             const selected = section === item.value;
             return (
               <TouchableOpacity
                 key={item.value}
-                style={[
-                  styles.tab,
-                  { borderBottomColor: selected ? colors.text : 'transparent' },
-                ]}
+                style={styles.tab}
                 onPress={() => setSection(item.value)}
               >
                 <Text
                   style={[
                     styles.tabText,
-                    { color: selected ? colors.text : colors.textMuted },
+                    { color: selected ? colors.primary : colors.textMuted },
                     selected && styles.tabTextSelected,
                   ]}
                 >
                   {item.label}
                 </Text>
+                {selected && (
+                  <View style={[styles.tabUnderline, { backgroundColor: colors.primary }]} />
+                )}
               </TouchableOpacity>
             );
           })}
@@ -355,6 +490,7 @@ export default function ExploreScreen({ navigation }: any) {
               ? (renderAuthor as any)
               : (renderArticle as any)
           }
+          ListHeaderComponent={renderCategoryGrid}
           contentContainerStyle={[
             styles.list,
             data.length === 0 && styles.emptyList,
@@ -403,9 +539,9 @@ const styles = StyleSheet.create({
     letterSpacing: 0.9,
   },
   heading: {
-    marginTop: 7,
+    marginTop: 10,
     fontFamily: F_SERIF,
-    fontSize: 29,
+    fontSize: 31,
     fontWeight: '700',
   },
   subheading: {
@@ -414,13 +550,13 @@ const styles = StyleSheet.create({
     lineHeight: 19,
   },
   searchBox: {
-    height: 42,
+    height: 46,
     marginTop: 14,
     paddingHorizontal: 12,
     flexDirection: 'row',
     alignItems: 'center',
     borderWidth: 1,
-    borderRadius: 7,
+    borderRadius: 10,
   },
   searchInput: {
     flex: 1,
@@ -429,13 +565,19 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   tabs: {
-    marginTop: 10,
+    marginTop: 18,
     flexDirection: 'row',
   },
   tab: {
     marginRight: 24,
     paddingVertical: 11,
-    borderBottomWidth: 2,
+    alignItems: 'flex-start',
+  },
+  tabUnderline: {
+    height: 2,
+    borderRadius: 1,
+    marginTop: 4,
+    alignSelf: 'stretch',
   },
   tabText: {
     fontSize: 13,
@@ -446,15 +588,18 @@ const styles = StyleSheet.create({
   },
   list: {
     paddingHorizontal: 16,
-    paddingBottom: 32,
+    paddingBottom: 100,
   },
   emptyList: {
     flexGrow: 1,
   },
   articleRow: {
-    paddingVertical: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 15,
     flexDirection: 'row',
-    borderBottomWidth: 1,
+    borderWidth: 1,
+    borderRadius: 8,
+    marginTop: 12,
   },
   articleCopy: {
     flex: 1,
@@ -466,9 +611,9 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   category: {
-    fontSize: 9,
-    fontWeight: '800',
-    letterSpacing: 0.5,
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 0.2,
   },
   vipBadge: {
     marginLeft: 7,
@@ -513,9 +658,13 @@ const styles = StyleSheet.create({
   },
   authorRow: {
     minHeight: 86,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
     flexDirection: 'row',
     alignItems: 'center',
-    borderBottomWidth: 1,
+    borderWidth: 1,
+    borderRadius: 8,
+    marginTop: 12,
   },
   authorIdentity: {
     flex: 1,
@@ -580,5 +729,62 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 18,
     textAlign: 'center',
+  },
+  gridContainer: {
+    paddingBottom: 4,
+    marginTop: 8,
+  },
+  gridTitle: {
+    fontFamily: F_SERIF,
+    fontSize: 16,
+    fontWeight: '700',
+    marginBottom: 12,
+  },
+  grid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+  },
+  gridItem: {
+    width: '48%',
+    padding: 14,
+    borderRadius: 10,
+    borderWidth: 1,
+    marginBottom: 12,
+  },
+  gridItemHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  gridItemCount: {
+    fontFamily: F_SANS,
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  gridItemName: {
+    fontFamily: F_SANS,
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  firstArticleCard: {
+    borderWidth: 1,
+    borderRadius: 10,
+    marginTop: 16,
+    marginBottom: 8,
+    overflow: 'hidden',
+  },
+  firstThumbnail: {
+    width: '100%',
+    aspectRatio: 16 / 10,
+  },
+  firstArticleContent: {
+    padding: 14,
+  },
+  firstArticleTitle: {
+    fontFamily: F_SERIF,
+    fontWeight: '700',
+    marginBottom: 8,
   },
 });

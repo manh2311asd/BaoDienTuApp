@@ -38,7 +38,7 @@ const C = {
 };
 
 export default function HomeScreen({ navigation }: any) {
-  const { fontSize, getColors, showImages, user } = useAppStore();
+  const { fontSize, getColors, showImages, user, themeMode } = useAppStore();
   const colors = getColors();
 
   const [categories, setCategories] = useState<Category[]>([]);
@@ -131,22 +131,25 @@ export default function HomeScreen({ navigation }: any) {
 
   // Render Skeleton Placeholders
   const renderSkeleton = () => {
+    const isDark = themeMode === 'dark';
+    const skeBg = isDark ? '#2D2D2A' : '#EAEAEA';
+
     return (
       <View style={styles.skeletonContainer}>
         {/* Hero Card Skeleton */}
-        <View style={styles.skeHeroCard}>
-          <View style={styles.skeHeroImg} />
-          <View style={styles.skeHeroTitle} />
-          <View style={styles.skeHeroText} />
+        <View style={[styles.skeHeroCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <View style={[styles.skeHeroImg, { backgroundColor: skeBg }]} />
+          <View style={[styles.skeHeroTitle, { backgroundColor: skeBg }]} />
+          <View style={[styles.skeHeroText, { backgroundColor: skeBg }]} />
         </View>
         {/* Compact List Skeletons */}
         {[1, 2, 3].map((i) => (
-          <View key={i} style={styles.skeCompactRow}>
+          <View key={i} style={[styles.skeCompactRow, { backgroundColor: colors.card, borderColor: colors.border }]}>
             <View style={{ flex: 1 }}>
-              <View style={styles.skeTextLine} />
-              <View style={[styles.skeTextLine, { width: '60%', marginTop: 8 }]} />
+              <View style={[styles.skeTextLine, { backgroundColor: skeBg }]} />
+              <View style={[styles.skeTextLine, { width: '60%', marginTop: 8, backgroundColor: skeBg }]} />
             </View>
-            <View style={styles.skeThumb} />
+            <View style={[styles.skeThumb, { backgroundColor: skeBg }]} />
           </View>
         ))}
       </View>
@@ -201,7 +204,7 @@ export default function HomeScreen({ navigation }: any) {
                 { backgroundColor: colors.card, borderColor: colors.border },
               ]}
             >
-              <Bell color={colors.text} size={18} {...IC} />
+              <Bell color={colors.text} size={20} {...IC} />
               {unreadCount > 0 && (
                 <View style={styles.notificationBadge}>
                   <Text style={styles.notificationBadgeText}>
@@ -221,7 +224,7 @@ export default function HomeScreen({ navigation }: any) {
           >
             <Text style={[styles.dateText, { color: colors.textMuted }]} maxFontSizeMultiplier={1.4}>{dateString}</Text>
           </TouchableOpacity>
-          <View style={[styles.editionBadge, { backgroundColor: colors.card }]}>
+          <View style={[styles.editionBadge, { backgroundColor: colors.card, borderColor: colors.border }]}>
             <Text style={[styles.editionText, { color: colors.text }]} maxFontSizeMultiplier={1.3}>Bản kỹ thuật số</Text>
           </View>
         </View>
@@ -369,9 +372,9 @@ export default function HomeScreen({ navigation }: any) {
                 )}
                 <View style={styles.heroContent}>
                   {heroArticle.type === 'VIP' && (
-                    <View style={styles.vipBadge}>
-                      <Star color={C.vip} size={10} fill={C.vip} {...IC} />
-                      <Text style={styles.vipText} maxFontSizeMultiplier={1.3}>VIP EXCLUSIVE</Text>
+                    <View style={[styles.vipBadge, { backgroundColor: colors.vipBg }]}>
+                      <Star color={colors.vip} size={10} fill={colors.vip} {...IC} />
+                      <Text style={[styles.vipText, { color: colors.vip }]} maxFontSizeMultiplier={1.3}>VIP EXCLUSIVE</Text>
                     </View>
                   )}
                   <Text
@@ -411,8 +414,8 @@ export default function HomeScreen({ navigation }: any) {
                     {heroArticle.viewCount > 0 && (
                       <>
                         <Text style={styles.metaDot}>·</Text>
-                        <Eye color={C.muted} size={11} style={{ marginRight: 2 }} {...IC} />
-                        <Text style={styles.metaLabel} maxFontSizeMultiplier={1.3}>{heroArticle.viewCount} lượt xem</Text>
+                        <Eye color={colors.textMuted} size={11} style={{ marginRight: 2 }} {...IC} />
+                        <Text style={[styles.metaLabel, { color: colors.textMuted }]} maxFontSizeMultiplier={1.3}>{heroArticle.viewCount} lượt xem</Text>
                       </>
                     )}
                   </View>
@@ -436,8 +439,8 @@ export default function HomeScreen({ navigation }: any) {
             >
               <View style={styles.compactTextContainer}>
                 {item.type === 'VIP' && (
-                  <View style={[styles.vipBadge, { marginBottom: 4 }]}>
-                    <Text style={styles.vipText} maxFontSizeMultiplier={1.3}>VIP</Text>
+                  <View style={[styles.vipBadge, { marginBottom: 4, backgroundColor: colors.vipBg }]}>
+                    <Text style={[styles.vipText, { color: colors.vip, marginLeft: 0 }]} maxFontSizeMultiplier={1.3}>VIP</Text>
                   </View>
                 )}
                 <Text
@@ -490,56 +493,49 @@ export default function HomeScreen({ navigation }: any) {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: C.bg,
   },
   headerBlock: {
-    backgroundColor: C.bg,
     borderBottomWidth: 1,
-    borderColor: C.border,
     paddingBottom: 4,
   },
   brandRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingTop: 12,
+    paddingHorizontal: 18,
+    paddingTop: 16,
+    paddingBottom: 4,
   },
   brandTitle: {
     fontFamily: F_SERIF,
-    fontSize: 32,
+    fontSize: 33,
     fontWeight: '700',
-    color: C.ink,
-    letterSpacing: -1,
+    letterSpacing: -0.5,
   },
   utilityRow: {
     flexDirection: 'row',
     alignItems: 'center',
   },
   iconBtn: {
-    width: 36,
-    height: 36,
+    width: 40,
+    height: 40,
     borderRadius: 6,
     borderWidth: 1,
-    borderColor: C.border,
     justifyContent: 'center',
     alignItems: 'center',
     marginLeft: 8,
-    backgroundColor: C.card,
   },
   notificationBadge: {
     position: 'absolute',
-    top: -5,
-    right: -5,
-    minWidth: 17,
-    height: 17,
-    paddingHorizontal: 4,
+    top: -3,
+    right: -3,
+    minWidth: 16,
+    height: 16,
+    paddingHorizontal: 3,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 9,
-    borderWidth: 2,
-    borderColor: C.bg,
-    backgroundColor: '#9F2F2D',
+    borderRadius: 8,
+    backgroundColor: '#A62624',
   },
   notificationBadgeText: {
     color: '#FFFFFF',
@@ -548,96 +544,89 @@ const styles = StyleSheet.create({
   },
   aaLabel: {
     fontFamily: F_SERIF,
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '700',
   },
   dateBar: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 16,
-    marginTop: 8,
-    marginBottom: 12,
+    paddingHorizontal: 18,
+    marginTop: 10,
+    marginBottom: 14,
   },
   searchBox: {
-    height: 42,
-    marginHorizontal: 16,
+    height: 46,
+    marginHorizontal: 18,
     marginBottom: 12,
     paddingHorizontal: 12,
     flexDirection: 'row',
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: C.border,
-    borderRadius: 6,
-    backgroundColor: C.card,
+    borderRadius: 10,
   },
   searchInput: {
     flex: 1,
     marginLeft: 8,
     paddingVertical: 0,
-    color: C.ink,
     fontFamily: F_SANS,
     fontSize: 14,
   },
   dateText: {
     fontFamily: F_SANS,
-    fontSize: 12,
-    color: C.muted,
+    fontSize: 11,
     fontWeight: '500',
   },
   editionBadge: {
-    backgroundColor: '#F0EFED',
     paddingHorizontal: 8,
-    paddingVertical: 2,
+    paddingVertical: 3,
     borderRadius: 4,
+    borderWidth: 1,
   },
   editionText: {
     fontFamily: F_SANS,
-    fontSize: 10,
-    fontWeight: '600',
-    color: C.ink,
+    fontSize: 9,
+    fontWeight: '700',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
   categoryScroll: {
-    paddingHorizontal: 16,
+    paddingHorizontal: 18,
+    paddingRight: 32,
     paddingBottom: 8,
   },
   categoryChip: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 6,
+    paddingHorizontal: 14,
+    height: 34,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 8,
     borderWidth: 1,
-    borderColor: C.border,
     marginRight: 8,
-    backgroundColor: C.card,
   },
-  categoryChipActive: {
-    backgroundColor: C.ink,
-    borderColor: C.ink,
-  },
+  categoryChipActive: {},
   categoryText: {
     fontFamily: F_SANS,
-    fontSize: 13,
-    color: C.muted,
-    fontWeight: '600',
+    fontSize: 12,
+    fontWeight: '700',
   },
   categoryTextActive: {
     color: '#FFFFFF',
   },
   listContainer: {
     paddingTop: 16,
-    paddingBottom: 32,
+    paddingBottom: 100,
   },
   heroCard: {
-    backgroundColor: C.card,
-    borderBottomWidth: 1,
-    borderColor: C.border,
+    borderWidth: 1,
+    borderRadius: 10,
+    marginHorizontal: 18,
+    marginBottom: 12,
     overflow: 'hidden',
   },
   heroImage: {
     width: '100%',
-    height: 218,
+    aspectRatio: 16 / 10,
   },
   imagePlaceholder: {
     backgroundColor: '#EAEAEA',
@@ -687,19 +676,22 @@ const styles = StyleSheet.create({
   },
   metaLabel: {
     fontFamily: F_SANS,
-    fontSize: 11,
-    color: C.muted,
+    fontSize: 12,
     fontWeight: '500',
   },
   metaDot: {
-    marginHorizontal: 6,
-    color: C.border,
+    marginHorizontal: 5,
+    color: '#AAAAAA',
+    fontSize: 11,
   },
   compactCard: {
     flexDirection: 'row',
     backgroundColor: C.card,
-    borderBottomWidth: 1,
+    borderWidth: 1,
     borderColor: C.border,
+    borderRadius: 8,
+    marginHorizontal: 12,
+    marginBottom: 12,
     paddingHorizontal: 18,
     paddingVertical: 15,
   },

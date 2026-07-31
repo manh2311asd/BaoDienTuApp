@@ -71,11 +71,11 @@ const TabNavigator = () => {
     <Tab.Navigator
       screenOptions={({ route }) => ({
         headerShown: false, // Hide navigation header for tabs to use custom branding headers
-        tabBarIcon: ({ color, focused }) => {
+        tabBarIcon: ({ color }) => {
           const iconProps = {
             color,
-            size: 23,
-            strokeWidth: focused ? 2.6 : 2.1,
+            size: 24,
+            strokeWidth: 2,
           };
           if (route.name === 'HomeTab') return <Home {...iconProps} />;
           if (route.name === 'ExploreTab') return <Compass {...iconProps} />;
@@ -85,11 +85,14 @@ const TabNavigator = () => {
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.textMuted,
         tabBarStyle: {
-          backgroundColor: colors.card,
+          backgroundColor: colors.background,
           borderTopColor: colors.border,
-          height: 60 + (insets.bottom > 0 ? insets.bottom - 10 : 0),
-          paddingBottom: 8 + (insets.bottom > 0 ? insets.bottom - 12 : 0),
+          borderTopWidth: 1,
+          height: 64 + (insets.bottom > 0 ? insets.bottom - 8 : 0),
+          paddingBottom: 10 + (insets.bottom > 0 ? insets.bottom - 12 : 0),
           paddingTop: 8,
+          elevation: 0,
+          shadowOpacity: 0,
         },
         tabBarLabelStyle: {
           fontSize: 11,

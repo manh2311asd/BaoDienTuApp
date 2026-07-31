@@ -75,6 +75,15 @@ export default function ArticleDetailScreen({ route, navigation }: any) {
   const [playbackSpeed, setPlaybackSpeed] = useState<0.9 | 1 | 1.25>(0.9);
   const [speechParagraphIndex, setSpeechParagraphIndex] = useState(0);
   const speechSessionRef = React.useRef(0);
+  const scrollProgressRef = React.useRef(0);
+
+  React.useEffect(() => {
+    return () => {
+      if (scrollProgressRef.current > 0) {
+        localDB.saveReadingProgress(articleId, scrollProgressRef.current);
+      }
+    };
+  }, [articleId]);
 
   const speechParagraphs = React.useMemo(
     () =>
@@ -438,7 +447,9 @@ export default function ArticleDetailScreen({ route, navigation }: any) {
     const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
     const total = contentSize.height - layoutMeasurement.height;
     if (total > 0) {
-      setScrollProgress(Math.max(0, Math.min(1, contentOffset.y / total)));
+      const p = Math.max(0, Math.min(1, contentOffset.y / total));
+      setScrollProgress(p);
+      scrollProgressRef.current = p;
     }
 
     const currentY = contentOffset.y;
@@ -502,7 +513,7 @@ export default function ArticleDetailScreen({ route, navigation }: any) {
   });
 
   const bodyFontSize = scaleFont(17, fontSize);
-  const bodyLineHeight = scaleLineHeight(27, fontSize);
+  const bodyLineHeight = scaleLineHeight(28, fontSize);
 
   const tagsStyles = {
     p: {
@@ -751,8 +762,16 @@ export default function ArticleDetailScreen({ route, navigation }: any) {
           )}
 
           {article.paywallRequired && (
-            <View style={styles.paywallCard}>
-              <Text style={styles.paywallEyebrow}>NỘI DUNG DÀNH CHO VIP</Text>
+            <View
+              style={[
+                styles.paywallCard,
+                {
+                  backgroundColor: colors.card,
+                  borderColor: colors.border,
+                },
+              ]}
+            >
+              <Text style={[styles.paywallEyebrow, { color: colors.primary }]}>NỘI DUNG DÀNH CHO VIP</Text>
               <Text style={[styles.paywallTitle, { color: colors.text }]}>
                 {paywallTitle}
               </Text>
@@ -957,35 +976,35 @@ const styles = StyleSheet.create({
   },
   title: {
     fontFamily: F_SERIF,
-    fontSize: 24,
+    fontSize: 28,
     fontWeight: '700',
     color: C.ink,
-    lineHeight: 32,
-    marginBottom: 12,
+    lineHeight: 36,
+    marginBottom: 14,
   },
   titleSmall: {
-    fontSize: 22,
-    lineHeight: 29,
+    fontSize: 25,
+    lineHeight: 33,
   },
   titleLarge: {
-    fontSize: 28,
-    lineHeight: 36,
+    fontSize: 32,
+    lineHeight: 41,
   },
   sapo: {
     fontFamily: F_SERIF,
-    fontSize: 16,
+    fontSize: 18,
     color: '#333333',
-    lineHeight: 24,
+    lineHeight: 28,
     fontStyle: 'italic',
-    marginBottom: 20,
+    marginBottom: 22,
   },
   sapoSmall: {
-    fontSize: 15,
-    lineHeight: 22,
+    fontSize: 16,
+    lineHeight: 25,
   },
   sapoLarge: {
-    fontSize: 19,
-    lineHeight: 28,
+    fontSize: 21,
+    lineHeight: 32,
   },
   divider: {
     height: 1,
@@ -1026,9 +1045,7 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     padding: 18,
     borderWidth: 1,
-    borderColor: '#E8D9AE',
-    borderRadius: 8,
-    backgroundColor: '#FBF3DB',
+    borderRadius: 10,
   },
   paywallEyebrow: {
     color: '#956400',
