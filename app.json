@@ -1,0 +1,46 @@
+{
+  "expo": {
+    "name": "The Daily",
+    "slug": "bao-dien-tu",
+    "version": "1.0.2",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "jsEngine": "hermes",
+    "scheme": "baodientu",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.baodientuapp",
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "Ứng dụng dùng vị trí của bạn để hiển thị dự báo thời tiết địa phương.",
+        "NSPhotoLibraryUsageDescription": "Ứng dụng cần truy cập thư viện ảnh để bạn chọn ảnh đại diện."
+      }
+    },
+    "android": {
+      "package": "com.baodientuapp"
+    },
+    "plugins": [
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Cho phép The Daily dùng vị trí để hiển thị thời tiết địa phương.",
+          "locationAlwaysAndWhenInUsePermission": false,
+          "locationAlwaysPermission": false
+        }
+      ],
+      [
+        "expo-secure-store",
+        {
+          "faceIDPermission": false
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Cho phép The Daily truy cập ảnh để chọn ảnh đại diện.",
+          "cameraPermission": false,
+          "microphonePermission": false
+        }
+      ]
+    ]
+  }
+}
