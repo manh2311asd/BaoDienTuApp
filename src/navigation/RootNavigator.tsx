@@ -1,10 +1,12 @@
 import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import type { NavigatorScreenParams } from '@react-navigation/native';
 import { useAppStore } from '../store/useAppStore';
-import { BookOpen, Compass, Home, User } from 'lucide-react-native';
+import { BookOpen, Compass, House, UserCircle } from 'phosphor-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { darkColors, lightColors } from '../theme/colors';
+import { Animated, Text } from 'react-native';
+import { appTheme, mainShellTheme } from '../theme/colors';
 
 // Import screens
 import HomeScreen from '../screens/Home/HomeScreen';
@@ -13,6 +15,10 @@ import ProfileScreen from '../screens/Profile/ProfileScreen';
 import VipPackagesScreen from '../screens/VipPackages/VipPackagesScreen';
 import ArticleDetailScreen from '../screens/ArticleDetail/ArticleDetailScreen';
 import CalendarScreen from '../screens/Calendar/CalendarScreen';
+import UtilitiesScreen from '../screens/Utilities/UtilitiesScreen';
+import FootballScreen from '../screens/Football/FootballScreen';
+import FinanceScreen from '../screens/Finance/FinanceScreen';
+import LotteryScreen from '../screens/Lottery/LotteryScreen';
 import WeatherScreen from '../screens/Weather/WeatherScreen';
 import WeatherSettingsScreen from '../screens/Weather/WeatherSettingsScreen';
 import AuthorDetailScreen from '../screens/Author/AuthorDetailScreen';
@@ -23,16 +29,26 @@ import StaffWorkspaceScreen from '../screens/Staff/StaffWorkspaceScreen';
 import ArticleEditorScreen from '../screens/Staff/ArticleEditorScreen';
 import ModerationReviewScreen from '../screens/Staff/ModerationReviewScreen';
 import AdminUsersScreen from '../screens/Staff/AdminUsersScreen';
+import ArticleWebViewScreen from '../screens/ArticleWebView/ArticleWebViewScreen';
+import PressReviewScreen from '../screens/Explore/PressReviewScreen';
+import FontTypographySettingsScreen from '../screens/Settings/FontTypographySettingsScreen';
+import AppearanceSettingsScreen from '../screens/Settings/AppearanceSettingsScreen';
+import DownloadDataSettingsScreen from '../screens/Settings/DownloadDataSettingsScreen';
 
 export type RootStackParamList = {
-  MainTabs: undefined;
+  MainTabs: NavigatorScreenParams<TabParamList> | undefined;
   ArticleDetail: {
     articleId: number;
     isOffline?: boolean;
     articleType?: 'FREE' | 'VIP';
   };
+  ArticleWebView: { url: string; title: string; sourceName?: string };
   VipPackages: undefined;
   Calendar: undefined;
+  Utilities: undefined;
+  Football: undefined;
+  Finance: undefined;
+  Lottery: undefined;
   Weather: undefined;
   WeatherSettings: undefined;
   AuthorDetail: { authorId: number; authorName: string };
@@ -41,11 +57,19 @@ export type RootStackParamList = {
   ArticleEditor: { articleId?: number } | undefined;
   ModerationReview: { articleId: number };
   AdminUsers: undefined;
+  PressReview: undefined;
+  FontTypographySettings: undefined;
+  AppearanceSettings: undefined;
+  DownloadDataSettings: undefined;
 };
 
 export type TabParamList = {
   HomeTab: undefined;
-  ExploreTab: undefined;
+  ExploreTab:
+    | {
+        initialSection?: 'latest' | 'journalists';
+      }
+    | undefined;
   LibraryTab:
     | {
         initialSection?: 'saved' | 'downloaded' | 'history';
@@ -57,68 +81,124 @@ export type TabParamList = {
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator<TabParamList>();
 
+const TAB_LABELS: Record<keyof TabParamList, string> = {
+  HomeTab: 'Trang chủ',
+  ExploreTab: 'Khám phá',
+  LibraryTab: 'Thư viện',
+  ProfileTab: 'Cá nhân',
+};
+
 const ProfileTabScreen = () => {
   const user = useAppStore((state) => state.user);
   return user ? <ProfileScreen /> : <LoginScreen />;
 };
 
+function MainTabIcon({
+  color,
+  focused,
+  routeName,
+}: {
+  color: string;
+  focused: boolean;
+  routeName: keyof TabParamList;
+}) {
+  const opacity = React.useRef(new Animated.Value(focused ? 1 : 0.82)).current;
+
+  React.useEffect(() => {
+    Animated.timing(opacity, {
+      toValue: focused ? 1 : 0.82,
+      duration: 165,
+      useNativeDriver: true,
+    }).start();
+  }, [focused, opacity]);
+
+  const iconProps = {
+    color,
+    size: 23,
+    weight: focused ? ('fill' as const) : ('regular' as const),
+  };
+
+  return (
+    <Animated.View style={{ opacity }}>
+      {routeName === 'HomeTab' ? (
+        <House {...iconProps} />
+      ) : routeName === 'ExploreTab' ? (
+        <Compass {...iconProps} />
+      ) : routeName === 'LibraryTab' ? (
+        <BookOpen {...iconProps} />
+      ) : (
+        <UserCircle {...iconProps} />
+      )}
+    </Animated.View>
+  );
+}
+
 const TabNavigator = () => {
   const themeMode = useAppStore((state) => state.themeMode);
-  const colors = themeMode === 'light' ? lightColors : darkColors;
   const insets = useSafeAreaInsets();
+  const shell = mainShellTheme[themeMode];
+  const bottomSafeArea = insets.bottom;
 
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
-        headerShown: false, // Hide navigation header for tabs to use custom branding headers
-        tabBarIcon: ({ color }) => {
-          const iconProps = {
-            color,
-            size: 24,
-            strokeWidth: 2,
-          };
-          if (route.name === 'HomeTab') return <Home {...iconProps} />;
-          if (route.name === 'ExploreTab') return <Compass {...iconProps} />;
-          if (route.name === 'LibraryTab') return <BookOpen {...iconProps} />;
-          return <User {...iconProps} />;
-        },
-        tabBarActiveTintColor: colors.primary,
-        tabBarInactiveTintColor: colors.textMuted,
+        headerShown: false,
+        tabBarIcon: ({ color, focused }) => (
+          <MainTabIcon color={color} focused={focused} routeName={route.name} />
+        ),
+        tabBarActiveTintColor: shell.appBottomActive,
+        tabBarInactiveTintColor: shell.appBottomInactive,
+        tabBarHideOnKeyboard: true,
         tabBarStyle: {
-          backgroundColor: colors.background,
-          borderTopColor: colors.border,
+          backgroundColor: shell.appBottomBar,
+          borderTopColor: shell.appBottomBorder,
           borderTopWidth: 1,
-          height: 64 + (insets.bottom > 0 ? insets.bottom - 8 : 0),
-          paddingBottom: 10 + (insets.bottom > 0 ? insets.bottom - 12 : 0),
-          paddingTop: 8,
+          height: 56 + bottomSafeArea,
+          paddingBottom: Math.max(bottomSafeArea, 4),
+          paddingTop: 6,
           elevation: 0,
           shadowOpacity: 0,
         },
-        tabBarLabelStyle: {
-          fontSize: 11,
-          fontWeight: '600',
+        tabBarItemStyle: {
+          minHeight: 48,
         },
+        tabBarLabel: ({ focused }) => (
+          <Text
+            numberOfLines={1}
+            style={{
+              color: focused
+                ? shell.appBottomActiveText
+                : shell.appBottomInactive,
+              fontSize: 10,
+              lineHeight: 12,
+              marginTop: 3,
+              fontWeight: focused ? '700' : '500',
+            }}
+          >
+            {TAB_LABELS[route.name]}
+          </Text>
+        ),
       })}
     >
       <Tab.Screen
         name="HomeTab"
         component={HomeScreen}
-        options={{ title: 'Trang chủ' }}
+        options={{ title: 'Trang chủ', tabBarAccessibilityLabel: 'Trang chủ' }}
       />
       <Tab.Screen
         name="ExploreTab"
         component={ExploreScreen}
-        options={{ title: 'Khám phá' }}
+        options={{ title: 'Khám phá', tabBarAccessibilityLabel: 'Khám phá' }}
       />
       <Tab.Screen
         name="LibraryTab"
         component={LibraryScreen}
-        options={{ title: 'Thư viện' }}
+        options={{ title: 'Thư viện', tabBarAccessibilityLabel: 'Thư viện' }}
       />
       <Tab.Screen
         name="ProfileTab"
         component={ProfileTabScreen}
-        options={{ title: 'Cá nhân' }}
+        options={{ title: 'Cá nhân', tabBarAccessibilityLabel: 'Cá nhân' }}
       />
     </Tab.Navigator>
   );
@@ -126,15 +206,15 @@ const TabNavigator = () => {
 
 export const RootNavigator = () => {
   const themeMode = useAppStore((state) => state.themeMode);
-  const colors = themeMode === 'light' ? lightColors : darkColors;
+  const shell = appTheme[themeMode];
 
   return (
     <Stack.Navigator
       screenOptions={{
         headerStyle: {
-          backgroundColor: colors.card,
+          backgroundColor: shell.appHeader,
         },
-        headerTintColor: colors.text,
+        headerTintColor: shell.appHeaderText,
         headerTitleStyle: {
           fontWeight: 'bold',
         },
@@ -163,6 +243,26 @@ export const RootNavigator = () => {
           title: 'Lịch',
           headerShown: false,
         }}
+      />
+      <Stack.Screen
+        name="Utilities"
+        component={UtilitiesScreen}
+        options={{ title: 'Tiện ích', headerShown: false }}
+      />
+      <Stack.Screen
+        name="Football"
+        component={FootballScreen}
+        options={{ title: 'Bóng đá', headerShown: false }}
+      />
+      <Stack.Screen
+        name="Finance"
+        component={FinanceScreen}
+        options={{ title: 'Tài chính', headerShown: false }}
+      />
+      <Stack.Screen
+        name="Lottery"
+        component={LotteryScreen}
+        options={{ title: 'Xổ số', headerShown: false }}
       />
       <Stack.Screen
         name="Weather"
@@ -206,6 +306,31 @@ export const RootNavigator = () => {
         name="AdminUsers"
         component={AdminUsersScreen}
         options={{ title: 'Quản lý người dùng', headerShown: false }}
+      />
+      <Stack.Screen
+        name="ArticleWebView"
+        component={ArticleWebViewScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="PressReview"
+        component={PressReviewScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="FontTypographySettings"
+        component={FontTypographySettingsScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="AppearanceSettings"
+        component={AppearanceSettingsScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="DownloadDataSettings"
+        component={DownloadDataSettingsScreen}
+        options={{ headerShown: false }}
       />
     </Stack.Navigator>
   );
