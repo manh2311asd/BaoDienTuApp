@@ -2,6 +2,8 @@ import React from 'react';
 import { StyleSheet, View, Text, TouchableOpacity } from 'react-native';
 import { ArrowLeft, Headphones, Bookmark, Share2, Pause, Play, X, Download, Check } from 'lucide-react-native';
 import { C, F_SANS } from './constants';
+import { useAppStore } from '../../store/useAppStore';
+import { appTheme } from '../../theme/colors';
 
 interface DetailBottomBarProps {
   navigation: any;
@@ -38,6 +40,8 @@ export default function DetailBottomBar({
   isSavedOffline,
   handleToggleOffline,
 }: DetailBottomBarProps) {
+  const themeMode = useAppStore((state) => state.themeMode);
+  const shell = appTheme[themeMode];
   const audioModeActive = isPlayingAudio || isSpeechPaused;
   const progress =
     speechParagraphCount > 0
@@ -45,52 +49,69 @@ export default function DetailBottomBar({
       : 0;
 
   return (
-    <View style={[styles.bottomBar, { paddingBottom: insets.bottom > 0 ? insets.bottom : 12 }]}>
+    <View
+      style={[
+        styles.bottomBar,
+        {
+          paddingBottom: insets.bottom > 0 ? insets.bottom : 12,
+          backgroundColor: shell.appSurface,
+          borderColor: shell.appBorder,
+        },
+      ]}
+    >
       {!audioModeActive ? (
         <View style={styles.bottomBarNormal}>
-          <TouchableOpacity style={styles.bottomBarBtn} onPress={() => navigation.goBack()}>
-            <ArrowLeft color={C.ink} size={18} strokeWidth={2.5} />
+          <TouchableOpacity style={[styles.bottomBarBtn, { backgroundColor: shell.appSurface, borderColor: shell.appBorder }]} onPress={() => navigation.goBack()}>
+            <ArrowLeft color={shell.appTextPrimary} size={18} strokeWidth={2.5} />
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.bottomBarBtn} onPress={toggleSpeechPlayback}>
-            <Headphones color={C.ink} size={18} strokeWidth={2.5} />
+          <TouchableOpacity style={[styles.bottomBarBtn, { backgroundColor: shell.appSurface, borderColor: shell.appBorder }]} onPress={toggleSpeechPlayback}>
+            <Headphones color={shell.appTextPrimary} size={18} strokeWidth={2.5} />
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={[styles.bottomBarBtn, isBookmarked && styles.bottomBarBtnActive]}
+            style={[
+              styles.bottomBarBtn,
+              { backgroundColor: shell.appSurface, borderColor: shell.appBorder },
+              isBookmarked && { backgroundColor: shell.appPrimary, borderColor: shell.appPrimary },
+            ]}
             onPress={toggleBookmark}
           >
             <Bookmark
-              color={isBookmarked ? '#FFFFFF' : C.ink}
-              fill={isBookmarked ? '#FFFFFF' : 'transparent'}
+              color={isBookmarked ? shell.appHeaderText : shell.appTextPrimary}
+              fill={isBookmarked ? shell.appHeaderText : 'transparent'}
               size={18}
               strokeWidth={2.5}
             />
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={[styles.bottomBarBtn, isSavedOffline && styles.offlineBtnActive]}
+            style={[
+              styles.bottomBarBtn,
+              { backgroundColor: shell.appSurface, borderColor: shell.appBorder },
+              isSavedOffline && { backgroundColor: shell.appSecondaryContainer },
+            ]}
             onPress={handleToggleOffline}
           >
             {isSavedOffline ? (
-              <Check color="#346538" size={18} strokeWidth={2.5} />
+              <Check color={shell.appSuccess} size={18} strokeWidth={2.5} />
             ) : (
-              <Download color={C.ink} size={18} strokeWidth={2.5} />
+              <Download color={shell.appTextPrimary} size={18} strokeWidth={2.5} />
             )}
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.bottomBarBtn} onPress={handleShare}>
-            <Share2 color={C.ink} size={18} strokeWidth={2.5} />
+          <TouchableOpacity style={[styles.bottomBarBtn, { backgroundColor: shell.appSurface, borderColor: shell.appBorder }]} onPress={handleShare}>
+            <Share2 color={shell.appTextPrimary} size={18} strokeWidth={2.5} />
           </TouchableOpacity>
         </View>
       ) : (
         <View style={styles.bottomBarTts}>
           {/* Play/Pause Button */}
-          <TouchableOpacity style={styles.ttsPlayPauseBtn} onPress={toggleSpeechPlayback}>
+          <TouchableOpacity style={[styles.ttsPlayPauseBtn, { backgroundColor: shell.appHeader }]} onPress={toggleSpeechPlayback}>
             {isPlayingAudio ? (
-              <Pause color="#FFFFFF" size={16} strokeWidth={3} />
+              <Pause color={shell.appHeaderText} size={16} strokeWidth={3} />
             ) : (
-              <Play color="#FFFFFF" fill="#FFFFFF" size={16} strokeWidth={2.5} />
+              <Play color={shell.appHeaderText} fill={shell.appHeaderText} size={16} strokeWidth={2.5} />
             )}
           </TouchableOpacity>
 
@@ -98,16 +119,16 @@ export default function DetailBottomBar({
           <View style={styles.ttsMiddle}>
             <View style={styles.ttsTextRow}>
               <View>
-                <Text style={styles.ttsStatusText}>
+                <Text style={[styles.ttsStatusText, { color: shell.appTextPrimary }]}>
                   {isPlayingAudio ? 'ĐANG NGHE' : 'ĐÃ TẠM DỪNG'}
                 </Text>
-                <Text style={styles.ttsParagraphText}>
+                <Text style={[styles.ttsParagraphText, { color: shell.appTextSecondary }]}>
                   Đoạn {Math.min(speechParagraphIndex + 1, speechParagraphCount || 1)}
                   /{speechParagraphCount || 1}
                 </Text>
               </View>
               <TouchableOpacity
-                style={styles.ttsSpeedBadge}
+                style={[styles.ttsSpeedBadge, { backgroundColor: shell.appSurface, borderColor: shell.appBorder }]}
                 onPress={() =>
                   handleSpeedChange(
                     playbackSpeed === 0.9
@@ -118,14 +139,14 @@ export default function DetailBottomBar({
                   )
                 }
               >
-                <Text style={styles.ttsSpeedText}>{playbackSpeed}x</Text>
+                <Text style={[styles.ttsSpeedText, { color: shell.appTextPrimary }]}>{playbackSpeed}x</Text>
               </TouchableOpacity>
             </View>
-            <View style={styles.ttsProgressTrack}>
+            <View style={[styles.ttsProgressTrack, { backgroundColor: shell.appSurfaceMuted }]}>
               <View
                 style={[
                   styles.ttsProgressFill,
-                  { width: `${progress * 100}%` },
+                  { width: `${progress * 100}%`, backgroundColor: shell.appPrimary },
                 ]}
               />
             </View>
@@ -133,7 +154,7 @@ export default function DetailBottomBar({
 
           {/* Exit/Close TTS Button */}
           <TouchableOpacity style={styles.ttsExitBtn} onPress={stopSpeechPlayback}>
-            <X color={C.ink} size={18} strokeWidth={2.5} />
+            <X color={shell.appTextPrimary} size={18} strokeWidth={2.5} />
           </TouchableOpacity>
         </View>
       )}
@@ -164,18 +185,10 @@ const styles = StyleSheet.create({
     height: 44,
     borderRadius: 6,
     borderWidth: 1,
-    borderColor: '#EAEAEA',
-    backgroundColor: '#FFFFFF',
+    borderColor: appTheme.light.appBorder,
+    backgroundColor: appTheme.light.appSurface,
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  bottomBarBtnActive: {
-    backgroundColor: '#111111',
-    borderColor: '#111111',
-  },
-  offlineBtnActive: {
-    backgroundColor: '#EDF3EC',
-    borderColor: '#D5E5D2',
   },
   bottomBarTts: {
     flexDirection: 'row',
@@ -187,7 +200,7 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: '#111111',
+    backgroundColor: appTheme.light.appHeader,
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 12,
@@ -220,16 +233,16 @@ const styles = StyleSheet.create({
     height: 3,
     overflow: 'hidden',
     borderRadius: 2,
-    backgroundColor: '#EAEAEA',
+    backgroundColor: appTheme.light.appSurfaceMuted,
   },
   ttsProgressFill: {
     height: 3,
     backgroundColor: C.accent,
   },
   ttsSpeedBadge: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: appTheme.light.appSurface,
     borderWidth: 1,
-    borderColor: '#EAEAEA',
+    borderColor: appTheme.light.appBorder,
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: 4,

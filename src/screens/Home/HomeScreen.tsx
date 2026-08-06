@@ -9,15 +9,18 @@ import {
   Platform,
   ScrollView,
   TextInput,
+  ActivityIndicator,
+  InteractionManager,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { useAppStore } from '../../store/useAppStore';
 import { apiClient } from '../../services/api/client';
 import { Article, Category } from '../../types/content';
 import { Bell, CloudSun, Compass, Eye, Search, Star, WifiOff } from 'lucide-react-native';
-import ReadingPreferencesSheet from '../../components/Reading/ReadingPreferencesSheet';
 import { scaleFont, scaleLineHeight } from '../../theme/typography';
+import { mainShellTheme } from '../../theme/colors';
 
 // §3 Font tokens
 const F_SERIF = Platform.select({ ios: 'Georgia', android: 'serif', default: 'serif' });
@@ -26,32 +29,57 @@ const IC = { strokeWidth: 2 } as const;
 
 // §4 Palette
 const C = {
-  bg:       '#FCFBF9',
-  card:     '#FFFFFF',
-  border:   '#EAEAEA',
-  ink:      '#111111',
-  muted:    '#787774',
-  accent:   '#1F6C9F',
-  accentBg: '#E1F3FE',
-  vip:      '#956400',
-  vipBg:    '#FBF3DB',
+  bg: mainShellTheme.light.appBackground,
+  card: mainShellTheme.light.appSurface,
+  border: mainShellTheme.light.appBorder,
+  ink: mainShellTheme.light.appTextPrimary,
+  muted: mainShellTheme.light.appTextSecondary,
+  accent: mainShellTheme.light.appPrimary,
+  accentBg: mainShellTheme.light.appPrimaryContainer,
+  vip: mainShellTheme.light.appWarning,
+  vipBg: mainShellTheme.light.appYellowContainer,
 };
 
+const HOME_NOTIFICATION_TTL = 2 * 60 * 1000;
+let homeNotificationCache: {
+  userId: number;
+  count: number;
+  savedAt: number;
+} | null = null;
+
 export default function HomeScreen({ navigation }: any) {
-  const { fontSize, getColors, showImages, user, themeMode } = useAppStore();
-  const colors = getColors();
+  const insets = useSafeAreaInsets();
+  const { fontSize, showImages, themeMode, user } = useAppStore();
+  const dark = themeMode === 'dark';
+  const shell = mainShellTheme[themeMode];
+  const colors = {
+    text: shell.appTextPrimary,
+    textMuted: shell.appTextSecondary,
+    border: shell.appBorder,
+  };
+  const homeCanvas = shell.appBackground;
+  const homeSurface = shell.appSurface;
+  const homeHeader = shell.appHeader;
+  const homeAccent = shell.appPrimary;
 
   const [categories, setCategories] = useState<Category[]>([]);
   const [selectedCatId, setSelectedCatId] = useState<number | null>(null);
   const [articles, setArticles] = useState<Article[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [initialLoading, setInitialLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [backgroundFetching, setBackgroundFetching] = useState(false);
   const [query, setQuery] = useState('');
+  const [searchFocused, setSearchFocused] = useState(false);
   const [debouncedQuery, setDebouncedQuery] = useState('');
   const [error, setError] = useState('');
-  const [showReadingSettings, setShowReadingSettings] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
   const requestId = useRef(0);
+
+  // Pagination states
+  const [page, setPage] = useState(0);
+  const [hasMore, setHasMore] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const hasLoadedOnceRef = useRef(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -59,10 +87,25 @@ export default function HomeScreen({ navigation }: any) {
         setUnreadCount(0);
         return;
       }
+
+      if (homeNotificationCache?.userId === user.id) {
+        setUnreadCount(homeNotificationCache.count);
+        if (Date.now() - homeNotificationCache.savedAt < HOME_NOTIFICATION_TTL) {
+          return;
+        }
+      }
+
       apiClient
         .getUnreadNotificationCount()
-        .then((response) => setUnreadCount(response.data))
-        .catch(() => setUnreadCount(0));
+        .then((response) => {
+          homeNotificationCache = {
+            userId: user.id,
+            count: response.data,
+            savedAt: Date.now(),
+          };
+          setUnreadCount(response.data);
+        })
+        .catch(() => undefined);
     }, [user])
   );
 
@@ -78,22 +121,52 @@ export default function HomeScreen({ navigation }: any) {
       .catch(() => setCategories([]));
   }, []);
 
-  const fetchArticles = useCallback(async (isRefresh = false) => {
+  const fetchArticles = useCallback(async (isRefresh = false, targetPage = 0) => {
     const currentRequestId = ++requestId.current;
+
     if (isRefresh) {
       setRefreshing(true);
+    } else if (targetPage > 0) {
+      setLoadingMore(true);
+    } else if (!hasLoadedOnceRef.current) {
+      setInitialLoading(true);
     } else {
-      setLoading(true);
+      setBackgroundFetching(true);
     }
     setError('');
 
     try {
-      const response = await apiClient.searchArticles(
-        debouncedQuery || undefined,
-        selectedCatId || undefined
-      );
+      const response = await apiClient.searchArticles({
+        keyword: debouncedQuery || undefined,
+        categoryId: selectedCatId || undefined,
+        origin: 'INTERNAL',
+        page: targetPage,
+        size: 15,
+      });
+
       if (currentRequestId === requestId.current) {
-        setArticles(response.data || []);
+        const resData = response.data;
+
+        let newArticles: Article[] = [];
+        let ended = true;
+
+        if (resData && typeof resData === 'object' && 'content' in resData) {
+          newArticles = (resData as any).content;
+          ended = (resData as any).last;
+        } else if (Array.isArray(resData)) {
+          newArticles = resData;
+          ended = true;
+        }
+
+        if (targetPage === 0 || isRefresh) {
+          setArticles(newArticles);
+        } else {
+          setArticles(prev => [...prev, ...newArticles]);
+        }
+
+        setPage(targetPage);
+        setHasMore(!ended);
+        hasLoadedOnceRef.current = true;
       }
     } catch (requestError) {
       if (currentRequestId === requestId.current) {
@@ -105,18 +178,47 @@ export default function HomeScreen({ navigation }: any) {
       }
     } finally {
       if (currentRequestId === requestId.current) {
-        setLoading(false);
+        setInitialLoading(false);
         setRefreshing(false);
+        setBackgroundFetching(false);
+        setLoadingMore(false);
       }
     }
   }, [debouncedQuery, selectedCatId]);
 
   useEffect(() => {
-    fetchArticles();
+    fetchArticles(false, 0);
   }, [fetchArticles]);
 
+  useEffect(() => {
+    if (articles.length === 0 || selectedCatId !== null || debouncedQuery) return;
+    const task = InteractionManager.runAfterInteractions(() => {
+      const savedAt = Date.now();
+      navigation.preload?.('ExploreTab');
+      Promise.all([
+        AsyncStorage.setItem(
+          '@BaoDienTu:explore_articles_v2',
+          JSON.stringify({ savedAt, data: articles.slice(0, 20) })
+        ),
+        categories.length > 0
+          ? AsyncStorage.setItem(
+              '@BaoDienTu:explore_categories_v2',
+              JSON.stringify({ savedAt, data: categories })
+            )
+          : Promise.resolve(),
+      ]).catch(() => undefined);
+    });
+    return () => task.cancel();
+  }, [articles, categories, debouncedQuery, navigation, selectedCatId]);
+
   const handleRefresh = () => {
-    fetchArticles(true);
+    fetchArticles(true, 0);
+  };
+
+  const handleLoadMore = () => {
+    if (!initialLoading && !backgroundFetching && !loadingMore && hasMore) {
+      fetchArticles(false, page + 1);
+    }
   };
 
   // Format date helper
@@ -131,25 +233,33 @@ export default function HomeScreen({ navigation }: any) {
 
   // Render Skeleton Placeholders
   const renderSkeleton = () => {
-    const isDark = themeMode === 'dark';
-    const skeBg = isDark ? '#2D2D2A' : '#EAEAEA';
-
     return (
       <View style={styles.skeletonContainer}>
         {/* Hero Card Skeleton */}
-        <View style={[styles.skeHeroCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-          <View style={[styles.skeHeroImg, { backgroundColor: skeBg }]} />
-          <View style={[styles.skeHeroTitle, { backgroundColor: skeBg }]} />
-          <View style={[styles.skeHeroText, { backgroundColor: skeBg }]} />
+        <View
+          style={[
+            styles.skeHeroCard,
+            { backgroundColor: shell.appSurface, borderColor: shell.appBorder },
+          ]}
+        >
+          <View style={[styles.skeHeroImg, { backgroundColor: shell.appSurfaceMuted }]} />
+          <View style={[styles.skeHeroTitle, { backgroundColor: shell.appSurfaceMuted }]} />
+          <View style={[styles.skeHeroText, { backgroundColor: shell.appSurfaceMuted }]} />
         </View>
         {/* Compact List Skeletons */}
         {[1, 2, 3].map((i) => (
-          <View key={i} style={[styles.skeCompactRow, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <View
+            key={i}
+            style={[
+              styles.skeCompactRow,
+              { backgroundColor: shell.appSurface, borderColor: shell.appBorder },
+            ]}
+          >
             <View style={{ flex: 1 }}>
-              <View style={[styles.skeTextLine, { backgroundColor: skeBg }]} />
-              <View style={[styles.skeTextLine, { width: '60%', marginTop: 8, backgroundColor: skeBg }]} />
+              <View style={[styles.skeTextLine, { backgroundColor: shell.appSurfaceMuted }]} />
+              <View style={[styles.skeTextLine, { width: '60%', marginTop: 8, backgroundColor: shell.appSurfaceMuted }]} />
             </View>
-            <View style={[styles.skeThumb, { backgroundColor: skeBg }]} />
+            <View style={[styles.skeThumb, { backgroundColor: shell.appSurfaceMuted }]} />
           </View>
         ))}
       </View>
@@ -166,34 +276,39 @@ export default function HomeScreen({ navigation }: any) {
       <View
         style={[
           styles.headerBlock,
-          { backgroundColor: colors.background, borderColor: colors.border },
+          { backgroundColor: shell.appBackgroundAlt, borderColor: shell.appBorder },
         ]}
       >
-        {/* Masthead Branding */}
-        <View style={styles.brandRow}>
-          <Text style={[styles.brandTitle, { color: colors.text }]}>The Daily</Text>
-          <View style={styles.utilityRow}>
+        <View style={[styles.masthead, { backgroundColor: homeHeader }]}>
+          {/* Masthead Branding */}
+          <View style={styles.brandRow}>
+            <Text style={[styles.brandTitle, { color: shell.appHeaderText }]}>NewsDaily</Text>
+            <View style={styles.utilityRow}>
             <TouchableOpacity
               accessibilityLabel="Chọn cỡ chữ"
-              onPress={() => setShowReadingSettings(true)}
+              hitSlop={4}
+              onPress={() => navigation.navigate('FontTypographySettings')}
               style={[
                 styles.iconBtn,
-                { backgroundColor: colors.card, borderColor: colors.border },
+                { backgroundColor: shell.appSurface, borderColor: shell.appBorder },
               ]}
             >
-              <Text style={[styles.aaLabel, { color: colors.text }]}>Aa</Text>
+              <Text style={[styles.aaLabel, { color: shell.appControlIcon }]}>Aa</Text>
             </TouchableOpacity>
             <TouchableOpacity
+              accessibilityLabel="Mở thời tiết"
+              hitSlop={4}
               onPress={() => navigation.navigate('Weather')}
               style={[
                 styles.iconBtn,
-                { backgroundColor: colors.card, borderColor: colors.border },
+                { backgroundColor: shell.appSurface, borderColor: shell.appBorder },
               ]}
             >
-              <CloudSun color={colors.text} size={20} {...IC} />
+              <CloudSun color={shell.appControlIcon} size={20} {...IC} />
             </TouchableOpacity>
             <TouchableOpacity
               accessibilityLabel="Mở thông báo"
+              hitSlop={4}
               onPress={() =>
                 user
                   ? navigation.navigate('Notifications')
@@ -201,50 +316,65 @@ export default function HomeScreen({ navigation }: any) {
               }
               style={[
                 styles.iconBtn,
-                { backgroundColor: colors.card, borderColor: colors.border },
+                { backgroundColor: shell.appSurface, borderColor: shell.appBorder },
               ]}
             >
-              <Bell color={colors.text} size={20} {...IC} />
+              <Bell color={shell.appControlIcon} size={18} {...IC} />
               {unreadCount > 0 && (
-                <View style={styles.notificationBadge}>
-                  <Text style={styles.notificationBadgeText}>
+                <View
+                  style={[
+                    styles.notificationBadge,
+                    { backgroundColor: shell.appError, borderColor: homeHeader },
+                  ]}
+                >
+                  <Text style={[styles.notificationBadgeText, { color: shell.appOnPrimary }]}>
                     {unreadCount > 9 ? '9+' : unreadCount}
                   </Text>
                 </View>
               )}
             </TouchableOpacity>
+            </View>
           </View>
-        </View>
 
-        {/* Date Bar */}
-        <View style={styles.dateBar}>
-          <TouchableOpacity
-            accessibilityLabel="Mở lịch"
-            onPress={() => navigation.navigate('Calendar')}
-          >
-            <Text style={[styles.dateText, { color: colors.textMuted }]} maxFontSizeMultiplier={1.4}>{dateString}</Text>
-          </TouchableOpacity>
-          <View style={[styles.editionBadge, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            <Text style={[styles.editionText, { color: colors.text }]} maxFontSizeMultiplier={1.3}>Bản kỹ thuật số</Text>
+          {/* Date Bar */}
+          <View style={styles.dateBar}>
+            <TouchableOpacity
+              accessibilityLabel="Mở lịch"
+              hitSlop={6}
+              onPress={() => navigation.navigate('Calendar')}
+            >
+              <Text style={[styles.dateText, { color: shell.appHeaderTextSecondary }]}>{dateString}</Text>
+            </TouchableOpacity>
+            <View style={[styles.editionBadge, { backgroundColor: shell.appPrimaryContainer }]}>
+              <Text style={[styles.editionText, { color: shell.appAccentText }]}>Bản kỹ thuật số</Text>
+            </View>
           </View>
         </View>
 
         <View
           style={[
             styles.searchBox,
-            { backgroundColor: colors.card, borderColor: colors.border },
+            {
+              backgroundColor: homeSurface,
+              borderColor: searchFocused ? shell.appPrimary : shell.appBorder,
+            },
           ]}
         >
-          <Search color={colors.textMuted} size={17} {...IC} />
+          <Search color={shell.appPrimary} size={17} {...IC} />
           <TextInput
             value={query}
             onChangeText={setQuery}
+            onFocus={() => setSearchFocused(true)}
+            onBlur={() => setSearchFocused(false)}
             placeholder="Tìm bài viết"
-            placeholderTextColor={colors.textMuted}
+            placeholderTextColor={shell.appSearchPlaceholder}
             style={[styles.searchInput, { color: colors.text }]}
             returnKeyType="search"
             autoCorrect={false}
           />
+          {backgroundFetching && !refreshing && (
+            <ActivityIndicator color={shell.appPrimary} size="small" />
+          )}
         </View>
 
         {/* Horizontal Category Scroll Bar */}
@@ -254,10 +384,12 @@ export default function HomeScreen({ navigation }: any) {
           contentContainerStyle={styles.categoryScroll}
         >
           <TouchableOpacity
+            accessibilityRole="button"
+            hitSlop={{ top: 6, bottom: 6 }}
             style={[
               styles.categoryChip,
-              { backgroundColor: colors.card, borderColor: colors.border },
-              selectedCatId === null && { backgroundColor: colors.text },
+              { backgroundColor: dark ? shell.appSurface : shell.appCategoryContainer, borderColor: shell.appCategoryBorder },
+              selectedCatId === null && { backgroundColor: homeAccent, borderColor: homeAccent },
             ]}
             onPress={() => setSelectedCatId(null)}
           >
@@ -265,9 +397,8 @@ export default function HomeScreen({ navigation }: any) {
               style={[
                 styles.categoryText,
                 { color: colors.textMuted },
-                selectedCatId === null && { color: colors.background },
+                selectedCatId === null && { color: shell.appOnPrimary },
               ]}
-              maxFontSizeMultiplier={1.4}
             >
               Tất cả
             </Text>
@@ -275,10 +406,12 @@ export default function HomeScreen({ navigation }: any) {
           {categories.map((cat) => (
             <TouchableOpacity
               key={cat.id}
+              accessibilityRole="button"
+              hitSlop={{ top: 6, bottom: 6 }}
               style={[
                 styles.categoryChip,
-                { backgroundColor: colors.card, borderColor: colors.border },
-                selectedCatId === cat.id && { backgroundColor: colors.text },
+                { backgroundColor: dark ? shell.appSurface : shell.appCategoryContainer, borderColor: shell.appCategoryBorder },
+                selectedCatId === cat.id && { backgroundColor: homeAccent, borderColor: homeAccent },
               ]}
               onPress={() => setSelectedCatId(cat.id)}
             >
@@ -286,9 +419,8 @@ export default function HomeScreen({ navigation }: any) {
                 style={[
                   styles.categoryText,
                   { color: colors.textMuted },
-                  selectedCatId === cat.id && { color: colors.background },
+                  selectedCatId === cat.id && { color: shell.appOnPrimary },
                 ]}
-                maxFontSizeMultiplier={1.4}
               >
                 {cat.name}
               </Text>
@@ -306,22 +438,22 @@ export default function HomeScreen({ navigation }: any) {
   return (
     <SafeAreaView
       edges={['top']}
-      style={[styles.root, { backgroundColor: colors.background }]}
+      style={[styles.root, { backgroundColor: homeCanvas }]}
     >
       {renderHeader()}
 
-      {loading && !refreshing ? (
+      {initialLoading && articles.length === 0 ? (
         renderSkeleton()
-      ) : error ? (
+      ) : error && articles.length === 0 ? (
         <View style={styles.emptyCenter}>
           <WifiOff color={colors.textMuted} size={36} {...IC} />
           <Text style={[styles.emptyTitle, { color: colors.text }]}>Không thể tải tin</Text>
           <Text style={[styles.emptySub, { color: colors.textMuted }]}>{error}</Text>
           <TouchableOpacity
-            style={[styles.retryBtn, { backgroundColor: colors.text }]}
+            style={[styles.retryBtn, { backgroundColor: shell.appPrimary }]}
             onPress={() => fetchArticles()}
           >
-            <Text style={[styles.retryBtnText, { color: colors.background }]}>Thử lại</Text>
+            <Text style={[styles.retryBtnText, { color: shell.appOnPrimary }]}>Thử lại</Text>
           </TouchableOpacity>
         </View>
       ) : articles.length === 0 ? (
@@ -331,32 +463,63 @@ export default function HomeScreen({ navigation }: any) {
           <Text style={[styles.emptySub, { color: colors.textMuted }]}>Không tìm thấy bài viết nào phù hợp trong danh mục này.</Text>
         </View>
       ) : (
-        <FlatList
+        <>
+          {error ? (
+            <View
+              style={[
+                styles.inlineWarning,
+                {
+                  backgroundColor: shell.appPrimaryContainer,
+                  borderColor: shell.appBorder,
+                },
+              ]}
+            >
+              <WifiOff color={shell.appError} size={15} {...IC} />
+              <Text style={[styles.inlineWarningText, { color: colors.text }]}>Không thể cập nhật tin mới. Nội dung gần nhất vẫn được giữ lại.</Text>
+            </View>
+          ) : null}
+          <FlatList
           data={listArticles}
           keyExtractor={(item) => item.id.toString()}
           refreshing={refreshing}
           onRefresh={handleRefresh}
-          contentContainerStyle={styles.listContainer}
+          onEndReached={handleLoadMore}
+          onEndReachedThreshold={0.5}
+          contentContainerStyle={[
+            styles.listContainer,
+            { paddingBottom: 78 + insets.bottom },
+          ]}
           showsVerticalScrollIndicator={false}
           initialNumToRender={5}
           maxToRenderPerBatch={5}
           updateCellsBatchingPeriod={60}
           windowSize={7}
           removeClippedSubviews={Platform.OS === 'android'}
+          ListFooterComponent={() => {
+            if (!loadingMore) return null;
+            return <ActivityIndicator size="small" color={colors.text} style={{ marginVertical: 16 }} />;
+          }}
           ListHeaderComponent={() => {
             if (!heroArticle) return null;
             return (
               <TouchableOpacity
                 style={[
                   styles.heroCard,
-                  { backgroundColor: colors.card, borderColor: colors.border },
+                  { backgroundColor: homeSurface, borderColor: colors.border },
                 ]}
-                onPress={() =>
-                  navigation.navigate('ArticleDetail', {
-                    articleId: heroArticle.id,
-                    articleType: heroArticle.type,
-                  })
-                }
+                onPress={() => {
+                  if (heroArticle.origin === 'EXTERNAL') {
+                    navigation.navigate('ArticleWebView', {
+                      url: heroArticle.originalUrl,
+                      title: heroArticle.title,
+                    });
+                  } else {
+                    navigation.navigate('ArticleDetail', {
+                      articleId: heroArticle.id,
+                      articleType: heroArticle.type,
+                    });
+                  }
+                }}
                 activeOpacity={0.9}
               >
                 {showImages && heroArticle.coverImage ? (
@@ -372,9 +535,9 @@ export default function HomeScreen({ navigation }: any) {
                 )}
                 <View style={styles.heroContent}>
                   {heroArticle.type === 'VIP' && (
-                    <View style={[styles.vipBadge, { backgroundColor: colors.vipBg }]}>
-                      <Star color={colors.vip} size={10} fill={colors.vip} {...IC} />
-                      <Text style={[styles.vipText, { color: colors.vip }]} maxFontSizeMultiplier={1.3}>VIP EXCLUSIVE</Text>
+                    <View style={[styles.vipBadge, { backgroundColor: shell.appYellowContainer }]}>
+                      <Star color={shell.appWarning} size={10} fill={shell.appWarning} {...IC} />
+                      <Text style={[styles.vipText, { color: shell.appWarning }]}>VIP EXCLUSIVE</Text>
                     </View>
                   )}
                   <Text
@@ -382,12 +545,11 @@ export default function HomeScreen({ navigation }: any) {
                       styles.heroTitle,
                       {
                         color: colors.text,
-                        fontSize: scaleFont(20, fontSize),
-                        lineHeight: scaleLineHeight(26, fontSize),
+                        fontSize: scaleFont(23, fontSize),
+                        lineHeight: scaleLineHeight(29, fontSize),
                       },
                     ]}
                     allowFontScaling
-                    maxFontSizeMultiplier={1.35}
                   >
                     {heroArticle.title}
                   </Text>
@@ -401,21 +563,25 @@ export default function HomeScreen({ navigation }: any) {
                       },
                     ]}
                     allowFontScaling
-                    maxFontSizeMultiplier={1.35}
                     numberOfLines={3}
                   >
                     {heroArticle.sapo}
                   </Text>
                   
                   <View style={styles.metaRow}>
-                    <Text style={[styles.metaLabel, { color: colors.textMuted }]} maxFontSizeMultiplier={1.3}>{heroArticle.categoryName || 'Tin tức'}</Text>
-                    <Text style={styles.metaDot}>·</Text>
-                    <Text style={[styles.metaLabel, { color: colors.textMuted }]} maxFontSizeMultiplier={1.3}>{formatDate(heroArticle.createdAt)}</Text>
+                    {heroArticle.origin === 'EXTERNAL' && heroArticle.sourceName && (
+                      <View style={[styles.sourceBadge, { backgroundColor: shell.appSecondaryContainer }]}>
+                        <Text style={[styles.sourceText, { color: shell.appSecondary }]}>{heroArticle.sourceName}</Text>
+                      </View>
+                    )}
+                    <Text style={[styles.metaLabel, { color: shell.appPrimary }]}>{heroArticle.categoryName || 'Tin tức'}</Text>
+                    <Text style={[styles.metaDot, { color: colors.border }]}>·</Text>
+                    <Text style={[styles.metaLabel, { color: colors.textMuted }]}>{formatDate(heroArticle.createdAt)}</Text>
                     {heroArticle.viewCount > 0 && (
                       <>
-                        <Text style={styles.metaDot}>·</Text>
+                        <Text style={[styles.metaDot, { color: colors.border }]}>·</Text>
                         <Eye color={colors.textMuted} size={11} style={{ marginRight: 2 }} {...IC} />
-                        <Text style={[styles.metaLabel, { color: colors.textMuted }]} maxFontSizeMultiplier={1.3}>{heroArticle.viewCount} lượt xem</Text>
+                        <Text style={[styles.metaLabel, { color: colors.textMuted }]}>{heroArticle.viewCount} lượt xem</Text>
                       </>
                     )}
                   </View>
@@ -427,20 +593,27 @@ export default function HomeScreen({ navigation }: any) {
             <TouchableOpacity
               style={[
                 styles.compactCard,
-                { backgroundColor: colors.card, borderColor: colors.border },
+                { backgroundColor: homeSurface, borderColor: colors.border },
               ]}
-              onPress={() =>
-                navigation.navigate('ArticleDetail', {
-                  articleId: item.id,
-                  articleType: item.type,
-                })
-              }
+              onPress={() => {
+                if (item.origin === 'EXTERNAL') {
+                  navigation.navigate('ArticleWebView', {
+                    url: item.originalUrl,
+                    title: item.title,
+                  });
+                } else {
+                  navigation.navigate('ArticleDetail', {
+                    articleId: item.id,
+                    articleType: item.type,
+                  });
+                }
+              }}
               activeOpacity={0.8}
             >
               <View style={styles.compactTextContainer}>
                 {item.type === 'VIP' && (
-                  <View style={[styles.vipBadge, { marginBottom: 4, backgroundColor: colors.vipBg }]}>
-                    <Text style={[styles.vipText, { color: colors.vip, marginLeft: 0 }]} maxFontSizeMultiplier={1.3}>VIP</Text>
+                  <View style={[styles.vipBadge, { marginBottom: 4, backgroundColor: shell.appYellowContainer }]}>
+                    <Text style={[styles.vipText, { color: shell.appWarning }]}>VIP</Text>
                   </View>
                 )}
                 <Text
@@ -448,21 +621,25 @@ export default function HomeScreen({ navigation }: any) {
                     styles.compactTitle,
                     {
                       color: colors.text,
-                      fontSize: scaleFont(15, fontSize),
-                      lineHeight: scaleLineHeight(20, fontSize),
+                      fontSize: scaleFont(17, fontSize),
+                      lineHeight: scaleLineHeight(22, fontSize),
                     },
                   ]}
                   allowFontScaling
-                  maxFontSizeMultiplier={1.35}
                   numberOfLines={fontSize === 'xlarge' ? 3 : 2}
                 >
                   {item.title}
                 </Text>
                 
                 <View style={styles.metaRow}>
-                  <Text style={[styles.metaLabel, { color: colors.textMuted }]} maxFontSizeMultiplier={1.3}>{item.categoryName || 'Tin tức'}</Text>
-                  <Text style={styles.metaDot}>·</Text>
-                  <Text style={[styles.metaLabel, { color: colors.textMuted }]} maxFontSizeMultiplier={1.3}>{formatDate(item.createdAt)}</Text>
+                  {item.origin === 'EXTERNAL' && item.sourceName && (
+                    <View style={[styles.sourceBadge, { backgroundColor: shell.appSecondaryContainer }]}>
+                      <Text style={[styles.sourceText, { color: shell.appSecondary }]}>{item.sourceName}</Text>
+                    </View>
+                  )}
+                  <Text style={[styles.metaLabel, { color: shell.appPrimary }]}>{item.categoryName || 'Tin tức'}</Text>
+                  <Text style={[styles.metaDot, { color: colors.border }]}>·</Text>
+                  <Text style={[styles.metaLabel, { color: colors.textMuted }]}>{formatDate(item.createdAt)}</Text>
                 </View>
               </View>
               
@@ -479,13 +656,10 @@ export default function HomeScreen({ navigation }: any) {
               )}
             </TouchableOpacity>
           )}
-        />
+          />
+        </>
       )}
 
-      <ReadingPreferencesSheet
-        visible={showReadingSettings}
-        onClose={() => setShowReadingSettings(false)}
-      />
     </SafeAreaView>
   );
 }
@@ -493,24 +667,30 @@ export default function HomeScreen({ navigation }: any) {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
+    backgroundColor: C.bg,
   },
   headerBlock: {
+    backgroundColor: C.bg,
     borderBottomWidth: 1,
+    borderColor: C.border,
+    paddingBottom: 4,
+  },
+  masthead: {
     paddingBottom: 4,
   },
   brandRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 18,
-    paddingTop: 16,
-    paddingBottom: 4,
+    paddingHorizontal: 16,
+    paddingTop: 8,
   },
   brandTitle: {
     fontFamily: F_SERIF,
-    fontSize: 33,
+    fontSize: 32,
     fontWeight: '700',
-    letterSpacing: -0.5,
+    color: mainShellTheme.light.appHeaderText,
+    letterSpacing: -1,
   },
   utilityRow: {
     flexDirection: 'row',
@@ -519,109 +699,131 @@ const styles = StyleSheet.create({
   iconBtn: {
     width: 40,
     height: 40,
-    borderRadius: 6,
+    borderRadius: 8,
     borderWidth: 1,
+    borderColor: C.border,
     justifyContent: 'center',
     alignItems: 'center',
     marginLeft: 8,
+    backgroundColor: C.card,
   },
   notificationBadge: {
     position: 'absolute',
-    top: -3,
-    right: -3,
-    minWidth: 16,
-    height: 16,
-    paddingHorizontal: 3,
+    top: -5,
+    right: -5,
+    minWidth: 17,
+    height: 17,
+    paddingHorizontal: 4,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 8,
-    backgroundColor: '#A62624',
+    borderRadius: 9,
+    borderWidth: 2,
+    borderColor: C.bg,
+    backgroundColor: mainShellTheme.light.appError,
   },
   notificationBadgeText: {
-    color: '#FFFFFF',
+    color: mainShellTheme.light.appOnPrimary,
     fontSize: 8,
     fontWeight: '800',
   },
   aaLabel: {
     fontFamily: F_SERIF,
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: '700',
   },
   dateBar: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 18,
-    marginTop: 10,
-    marginBottom: 14,
+    paddingHorizontal: 16,
+    marginTop: 4,
+    marginBottom: 5,
   },
   searchBox: {
     height: 46,
-    marginHorizontal: 18,
-    marginBottom: 12,
+    marginHorizontal: 16,
+    marginTop: 10,
+    marginBottom: 10,
     paddingHorizontal: 12,
     flexDirection: 'row',
     alignItems: 'center',
     borderWidth: 1,
+    borderColor: C.border,
     borderRadius: 10,
+    backgroundColor: C.card,
   },
   searchInput: {
     flex: 1,
     marginLeft: 8,
     paddingVertical: 0,
+    color: C.ink,
     fontFamily: F_SANS,
     fontSize: 14,
   },
   dateText: {
     fontFamily: F_SANS,
-    fontSize: 11,
+    fontSize: 12,
+    color: C.muted,
     fontWeight: '500',
   },
   editionBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 3,
+    backgroundColor: mainShellTheme.light.appPrimaryContainer,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
     borderRadius: 4,
-    borderWidth: 1,
   },
   editionText: {
     fontFamily: F_SANS,
-    fontSize: 9,
-    fontWeight: '700',
+    fontSize: 10,
+    fontWeight: '600',
+    color: mainShellTheme.light.appAccentText,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
   categoryScroll: {
-    paddingHorizontal: 18,
-    paddingRight: 32,
-    paddingBottom: 8,
+    paddingHorizontal: 16,
+    paddingBottom: 7,
   },
   categoryChip: {
-    paddingHorizontal: 14,
-    height: 34,
-    justifyContent: 'center',
-    alignItems: 'center',
+    minHeight: 35,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
     borderRadius: 8,
     borderWidth: 1,
+    borderColor: C.border,
     marginRight: 8,
+    backgroundColor: C.card,
   },
-  categoryChipActive: {},
   categoryText: {
     fontFamily: F_SANS,
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  categoryTextActive: {
-    color: '#FFFFFF',
+    fontSize: 13,
+    color: C.muted,
+    fontWeight: '600',
   },
   listContainer: {
-    paddingTop: 16,
-    paddingBottom: 100,
+    paddingTop: 12,
+    paddingBottom: 48,
+  },
+  inlineWarning: {
+    minHeight: 38,
+    marginHorizontal: 16,
+    marginTop: 8,
+    paddingHorizontal: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderRadius: 8,
+  },
+  inlineWarningText: {
+    flex: 1,
+    marginLeft: 8,
+    fontSize: 11,
+    lineHeight: 16,
   },
   heroCard: {
-    borderWidth: 1,
-    borderRadius: 10,
-    marginHorizontal: 18,
-    marginBottom: 12,
+    backgroundColor: C.card,
+    borderBottomWidth: 1,
+    borderColor: C.border,
     overflow: 'hidden',
   },
   heroImage: {
@@ -629,17 +831,16 @@ const styles = StyleSheet.create({
     aspectRatio: 16 / 10,
   },
   imagePlaceholder: {
-    backgroundColor: '#EAEAEA',
+    backgroundColor: mainShellTheme.light.appSurfaceMuted,
   },
   heroContent: {
     paddingHorizontal: 18,
-    paddingTop: 18,
-    paddingBottom: 20,
+    paddingTop: 14,
+    paddingBottom: 17,
   },
   vipBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: C.vipBg,
     alignSelf: 'flex-start',
     paddingHorizontal: 6,
     paddingVertical: 2,
@@ -650,16 +851,15 @@ const styles = StyleSheet.create({
     fontFamily: F_SANS,
     fontSize: 9,
     fontWeight: '700',
-    color: C.vip,
     marginLeft: 4,
     letterSpacing: 0.5,
   },
   heroTitle: {
     fontFamily: F_SERIF,
-    fontSize: 20,
+    fontSize: 23,
     fontWeight: '700',
     color: C.ink,
-    lineHeight: 26,
+    lineHeight: 29,
     marginBottom: 6,
   },
   heroSapo: {
@@ -674,24 +874,33 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginTop: 4,
   },
+  sourceBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 1.5,
+    borderRadius: 4,
+    marginRight: 6,
+  },
+  sourceText: {
+    fontFamily: F_SANS,
+    fontSize: 9,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
   metaLabel: {
     fontFamily: F_SANS,
-    fontSize: 12,
+    fontSize: 11.5,
+    color: C.muted,
     fontWeight: '500',
   },
   metaDot: {
-    marginHorizontal: 5,
-    color: '#AAAAAA',
-    fontSize: 11,
+    marginHorizontal: 6,
   },
   compactCard: {
     flexDirection: 'row',
     backgroundColor: C.card,
-    borderWidth: 1,
+    borderBottomWidth: 1,
     borderColor: C.border,
-    borderRadius: 8,
-    marginHorizontal: 12,
-    marginBottom: 12,
     paddingHorizontal: 18,
     paddingVertical: 15,
   },
@@ -702,10 +911,10 @@ const styles = StyleSheet.create({
   },
   compactTitle: {
     fontFamily: F_SERIF,
-    fontSize: 15,
+    fontSize: 17,
     fontWeight: '700',
     color: C.ink,
-    lineHeight: 20,
+    lineHeight: 22,
     marginBottom: 4,
   },
   compactThumb: {
@@ -743,7 +952,7 @@ const styles = StyleSheet.create({
     backgroundColor: C.ink,
   },
   retryBtnText: {
-    color: '#FFFFFF',
+    color: mainShellTheme.light.appOnPrimary,
     fontSize: 13,
     fontWeight: '700',
   },
@@ -759,12 +968,12 @@ const styles = StyleSheet.create({
   },
   skeHeroImg: {
     height: 210,
-    backgroundColor: '#EAEAEA',
+    backgroundColor: mainShellTheme.light.appSurfaceMuted,
     marginBottom: 16,
   },
   skeHeroTitle: {
     height: 18,
-    backgroundColor: '#EAEAEA',
+    backgroundColor: mainShellTheme.light.appSurfaceMuted,
     borderRadius: 4,
     width: '80%',
     marginHorizontal: 18,
@@ -772,7 +981,7 @@ const styles = StyleSheet.create({
   },
   skeHeroText: {
     height: 14,
-    backgroundColor: '#EAEAEA',
+    backgroundColor: mainShellTheme.light.appSurfaceMuted,
     borderRadius: 4,
     width: '86%',
     marginHorizontal: 18,
@@ -788,7 +997,7 @@ const styles = StyleSheet.create({
   },
   skeTextLine: {
     height: 14,
-    backgroundColor: '#EAEAEA',
+    backgroundColor: mainShellTheme.light.appSurfaceMuted,
     borderRadius: 4,
     width: '75%',
   },
@@ -796,7 +1005,7 @@ const styles = StyleSheet.create({
     width: 80,
     height: 70,
     borderRadius: 6,
-    backgroundColor: '#EAEAEA',
+    backgroundColor: mainShellTheme.light.appSurfaceMuted,
     marginLeft: 12,
   },
 });
