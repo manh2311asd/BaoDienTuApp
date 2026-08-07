@@ -9,6 +9,8 @@ import type { Subscription } from '../types/content';
 export type ThemeMode = 'light' | 'dark';
 export type ThemeSetting = 'light' | 'dark' | 'system';
 export type FontSize = 'small' | 'medium' | 'large' | 'xlarge';
+export type ArticleFontFamily = 'app' | 'serif' | 'sans';
+export type ArticleLineHeight = 'compact' | 'default' | 'relaxed';
 
 export interface WeatherLocation {
   name: string;
@@ -31,7 +33,11 @@ interface AppState {
   themeMode: ThemeMode;
   themeSetting: ThemeSetting;
   fontSize: FontSize;
+  articleFontSize: FontSize;
+  articleFontFamily: ArticleFontFamily;
+  articleLineHeight: ArticleLineHeight;
   showImages: boolean;
+  wifiOnlyDownloads: boolean;
   user: UserSession | null;
   bookmarkedIds: number[];
   offlineIds: number[];
@@ -41,7 +47,13 @@ interface AppState {
   toggleTheme: () => void;
   setThemeSetting: (setting: ThemeSetting) => void;
   setFontSize: (size: FontSize) => void;
+  setArticleTypography: (settings: {
+    fontSize: FontSize;
+    fontFamily: ArticleFontFamily;
+    lineHeight: ArticleLineHeight;
+  }) => void;
   setShowImages: (show: boolean) => void;
+  setWifiOnlyDownloads: (enabled: boolean) => void;
   setUser: (user: UserSession | null) => void;
   logout: () => void;
   setBookmarkedIds: (ids: number[]) => void;
@@ -73,7 +85,11 @@ export const useAppStore = create<AppState>()(
       themeSetting: initialThemeSetting,
       themeMode: resolveInitialThemeMode(initialThemeSetting),
       fontSize: 'medium',
+      articleFontSize: 'medium',
+      articleFontFamily: 'app',
+      articleLineHeight: 'default',
       showImages: true,
+      wifiOnlyDownloads: false,
       user: null,
       bookmarkedIds: [],
       offlineIds: [],
@@ -99,8 +115,18 @@ export const useAppStore = create<AppState>()(
       }),
       
       setFontSize: (size) => set({ fontSize: size }),
+
+      setArticleTypography: ({ fontSize, fontFamily, lineHeight }) =>
+        set({
+          articleFontSize: fontSize,
+          articleFontFamily: fontFamily,
+          articleLineHeight: lineHeight,
+        }),
       
       setShowImages: (show) => set({ showImages: show }),
+
+      setWifiOnlyDownloads: (enabled) =>
+        set({ wifiOnlyDownloads: enabled }),
       
       setUser: (user) => set({ user }),
       
@@ -157,9 +183,14 @@ export const useAppStore = create<AppState>()(
         themeSetting: state.themeSetting,
         themeMode: state.themeMode,
         fontSize: state.fontSize,
+        articleFontSize: state.articleFontSize,
+        articleFontFamily: state.articleFontFamily,
+        articleLineHeight: state.articleLineHeight,
         showImages: state.showImages,
+        wifiOnlyDownloads: state.wifiOnlyDownloads,
         bookmarkedIds: state.bookmarkedIds,
         offlineIds: state.offlineIds,
+        subscriptions: state.subscriptions,
         weatherAutoLocation: state.weatherAutoLocation,
         weatherLocation: state.weatherLocation,
       }),

@@ -1,7 +1,20 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Article } from '../src/types/content';
-import { localDB } from '../src/services/localDB';
-import { useAppStore } from '../src/store/useAppStore';
+import {
+  buildRecentArticlesStorageKey,
+  localDB,
+  resolveHistoryEnvironment,
+} from '../src/services/localDB';
+import { useAppStore, UserSession } from '../src/store/useAppStore';
+
+const testUser: UserSession = {
+  id: 77,
+  name: 'Người đọc kiểm thử',
+  email: 'reader@example.com',
+  role: 'MEMBER',
+  jwtToken: 'test-token',
+  freeArticlesLeft: 3,
+};
 
 const article: Article = {
   id: 501,
@@ -22,7 +35,7 @@ const article: Article = {
 describe('localDB', () => {
   beforeEach(async () => {
     await AsyncStorage.clear();
-    useAppStore.setState({ bookmarkedIds: [], offlineIds: [] });
+    useAppStore.setState({ bookmarkedIds: [], offlineIds: [], user: testUser });
   });
 
   it('lưu, đọc và xóa bài viết ngoại tuyến', async () => {
@@ -107,5 +120,56 @@ describe('localDB', () => {
     expect(recent).toHaveLength(10);
     expect(recent[0].id).toBe(611);
     expect(recent[9].id).toBe(602);
+  });
+
+  it('không ghi hoặc hiển thị lịch sử khi chưa đăng nhập', async () => {
+    useAppStore.setState({ user: null });
+    await AsyncStorage.setItem(
+      '@BaoDienTu:recent_articles',
+      JSON.stringify([article])
+    );
+
+    await localDB.saveRecentArticle(article);
+
+    await expect(localDB.getRecentArticles()).resolves.toEqual([]);
+    expect(
+      await AsyncStorage.getItem(buildRecentArticlesStorageKey(testUser.id))
+    ).toBeNull();
+  });
+
+  it('tách lịch sử giữa các tài khoản', async () => {
+    await localDB.saveRecentArticle(article);
+    useAppStore.setState({ user: { ...testUser, id: 78 } });
+
+    await expect(localDB.getRecentArticles()).resolves.toEqual([]);
+
+    useAppStore.setState({ user: testUser });
+    await expect(localDB.getRecentArticles()).resolves.toEqual([
+      expect.objectContaining({ id: article.id }),
+    ]);
+  });
+
+  it('tách khóa local và Azure kể cả khi cùng tài khoản', () => {
+    const localKey = buildRecentArticlesStorageKey(testUser.id, 'local');
+    const azureKey = buildRecentArticlesStorageKey(testUser.id, 'azure');
+
+    expect(localKey).not.toBe(azureKey);
+    expect(resolveHistoryEnvironment('local', 'http://192.168.1.10:8082')).toBe(
+      'local'
+    );
+    expect(resolveHistoryEnvironment('azure', 'http://192.168.1.10:8082')).toBe(
+      'azure'
+    );
+  });
+
+  it('loại bỏ lịch sử kiểu cũ không rõ tài khoản và nguồn dữ liệu', async () => {
+    await AsyncStorage.setItem(
+      '@BaoDienTu:recent_articles',
+      JSON.stringify([article])
+    );
+
+    await localDB.syncInitialLocalData();
+
+    expect(await AsyncStorage.getItem('@BaoDienTu:recent_articles')).toBeNull();
   });
 });

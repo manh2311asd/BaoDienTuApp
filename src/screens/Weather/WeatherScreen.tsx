@@ -6,22 +6,23 @@ import {
   TouchableOpacity,
   ScrollView,
   ActivityIndicator,
+  StatusBar,
 } from 'react-native';
 import { useAppStore } from '../../store/useAppStore';
 import { ArrowLeft, Settings, RotateCw, CloudSun, Sun, Cloud, CloudRain, HelpCircle, MapPin, Clock, Calendar } from 'lucide-react-native';
 import { Platform } from 'react-native';
-
-const F_SRF  = Platform.select({ ios: 'Georgia', android: 'serif', default: 'serif' });
-// B7 FIX: desaturated, editorial-palette weather icon colors per §4
-const W_SUNNY   = '#956400';  // warm amber, muted
-const W_CLOUDY  = '#787774';  // neutral grey
-const W_RAIN    = '#1F6C9F';  // muted steel blue
-const W_STORM   = '#4A3060';  // muted purple-slate
-const IC = { strokeWidth: 2 } as const;
 import * as Location from 'expo-location';
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { appTheme, utilityThemes } from '../../theme/colors';
+
+const F_SRF  = Platform.select({ ios: 'Georgia', android: 'serif', default: 'serif' });
+const W_SUNNY = appTheme.light.appWarning;
+const W_CLOUDY = appTheme.light.appTextSecondary;
+const W_RAIN = utilityThemes.weather.accent;
+const W_STORM = utilityThemes.calendar.accent;
+const IC = { strokeWidth: 2 } as const;
 
 interface WeatherData {
   timestamp: number;
@@ -68,8 +69,11 @@ const getAqiLabel = (aqi: number) => {
 };
 
 const WeatherScreen = ({ navigation }: any) => {
-  const { getColors, weatherAutoLocation, weatherLocation } = useAppStore();
+  const { getColors, themeMode, weatherAutoLocation, weatherLocation } = useAppStore();
   const colors = getColors();
+  const shell = appTheme[themeMode];
+  const weatherCanvas = themeMode === 'dark' ? shell.appBackground : utilityThemes.weather.canvas;
+  const weatherHeader = themeMode === 'dark' ? shell.appHeader : utilityThemes.weather.header;
   const insets = useSafeAreaInsets();
   
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -252,29 +256,30 @@ const WeatherScreen = ({ navigation }: any) => {
   }
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.background }]}>
+    <View style={[styles.container, { backgroundColor: weatherCanvas }]}>
+      <StatusBar barStyle="light-content" backgroundColor={weatherHeader} />
       {/* Header bar with safe top inset padding */}
       <View style={[
         styles.headerContainer, 
         { 
-          borderBottomColor: colors.border, 
-          backgroundColor: colors.card,
+          borderBottomColor: shell.appBorder,
+          backgroundColor: weatherHeader,
           paddingTop: (insets.top > 0 ? insets.top : 12) + 8,
         }
       ]}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.headerBtn}>
-          <ArrowLeft color={colors.text} size={22} {...IC} />
+          <ArrowLeft color={shell.appHeaderText} size={22} {...IC} />
         </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: colors.text }]}>Thời tiết</Text>
+        <Text style={[styles.headerTitle, { color: shell.appHeaderText }]}>Thời tiết</Text>
         <View style={styles.headerRightBtns}>
           <TouchableOpacity onPress={() => loadWeather(true)} style={[styles.headerBtn, { marginRight: 12 }]} disabled={isRefreshing}>
-            <RotateCw color={colors.text} size={22} {...IC} />
+            <RotateCw color={shell.appHeaderText} size={22} {...IC} />
           </TouchableOpacity>
           <TouchableOpacity
             onPress={() => navigation.navigate('WeatherSettings')}
             style={styles.headerBtn}
           >
-            <Settings color={colors.text} size={22} {...IC} />
+            <Settings color={shell.appHeaderText} size={22} {...IC} />
           </TouchableOpacity>
         </View>
       </View>
@@ -287,7 +292,7 @@ const WeatherScreen = ({ navigation }: any) => {
         )}
         {/* Location Display */}
         <View style={styles.locationContainer}>
-          <MapPin color="#787774" size={22} style={{ marginRight: 6 }} {...IC} />
+          <MapPin color={utilityThemes.weather.accent} size={22} style={{ marginRight: 6 }} {...IC} />
           <Text style={[styles.locationName, { color: colors.text }]}>
             {weatherData?.locationName}
           </Text>
@@ -409,10 +414,10 @@ const styles = StyleSheet.create({
     marginTop: 12,
     padding: 10,
     borderRadius: 6,
-    backgroundColor: '#FBF3DB',
+    backgroundColor: appTheme.light.appYellowContainer,
   },
   staleText: {
-    color: '#956400',
+    color: appTheme.light.appWarning,
     fontSize: 12,
     lineHeight: 17,
     textAlign: 'center',
@@ -483,7 +488,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     marginTop: 12,
-    backgroundColor: 'rgba(0,0,0,0.02)',
+    backgroundColor: appTheme.light.appSurfaceMuted,
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 6,     // A3 FIX: pill(20)→crisp(6)
@@ -493,13 +498,13 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   aqiValueBadge: {
-    backgroundColor: '#4A6741',   // B7 FIX: muted forest green per §4 desaturated palettes
+    backgroundColor: appTheme.light.appSuccess,
     paddingHorizontal: 8,
     paddingVertical: 2,
     borderRadius: 4,     // A3 FIX: no pill
   },
   aqiValueText: {
-    color: '#FFFFFF',
+    color: appTheme.light.appHeaderText,
     fontSize: 11,
     fontWeight: '800',
   },

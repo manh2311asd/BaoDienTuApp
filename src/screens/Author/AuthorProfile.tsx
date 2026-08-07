@@ -1,6 +1,7 @@
 import React from 'react';
 import { ActivityIndicator, StyleSheet, View, Text, TouchableOpacity } from 'react-native';
 import { Bell, Check } from 'lucide-react-native';
+import { appTheme } from '../../theme/colors';
 
 interface AuthorProfileProps {
   authorName: string;
@@ -76,7 +77,7 @@ export default function AuthorProfile({
       <View style={[styles.divider, { backgroundColor: colors.border }]} />
 
       <Text style={[styles.bioText, { color: colors.textMuted }]}>
-        Hồ sơ tác giả và các bài viết đã xuất bản trên The Daily.
+        Hồ sơ tác giả và các bài viết đã xuất bản trên NewsDaily.
       </Text>
     </View>
   );
@@ -102,7 +103,7 @@ const styles = StyleSheet.create({
     marginRight: 16,
   },
   avatarLetter: {
-    color: '#FFFFFF',
+    color: appTheme.light.appHeaderText,
     fontSize: 28,
     fontWeight: 'bold',
   },

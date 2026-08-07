@@ -15,6 +15,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { apiClient } from '../../services/api/client';
 import { useAppStore } from '../../store/useAppStore';
 import { localDB } from '../../services/localDB';
+import { appTheme } from '../../theme/colors';
 
 // §3 Font tokens
 const F_SERIF = Platform.select({ ios: 'Georgia', android: 'serif', default: 'serif' });
@@ -22,17 +23,17 @@ const F_SANS  = Platform.select({ ios: 'Helvetica Neue', android: 'sans-serif', 
 
 // §4 Palette
 const C = {
-  bg:       '#FCFBF9',
-  card:     '#FFFFFF',
-  border:   '#EAEAEA',
-  ink:      '#111111',
-  muted:    '#787774',
-  btnBg:    '#111111',
-  btnText:  '#FFFFFF',
-  danger:   '#9F2F2D',
-  dangerBg: '#FDEBEC',
-  accent:   '#1F6C9F',
-  accentBg: '#E1F3FE',
+  bg: appTheme.light.appBackground,
+  card: appTheme.light.appSurface,
+  border: appTheme.light.appBorder,
+  ink: appTheme.light.appTextPrimary,
+  muted: appTheme.light.appTextSecondary,
+  btnBg: appTheme.light.appHeader,
+  btnText: appTheme.light.appHeaderText,
+  danger: appTheme.light.appError,
+  dangerBg: appTheme.light.appPrimaryContainer,
+  accent: appTheme.light.appPrimary,
+  accentBg: appTheme.light.appBlueContainer,
 };
 
 export default function LoginScreen() {
@@ -120,7 +121,7 @@ export default function LoginScreen() {
         {/* Masthead */}
         <Animated.View style={[styles.masthead, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
           <View style={styles.mastheadRule} />
-          <Text style={styles.mastTitle}>The Daily</Text>
+          <Text style={styles.mastTitle}>NewsDaily</Text>
           <View style={styles.mastheadRule} />
           <Text style={styles.mastheadSub}>Tin tức chọn lọc · Mỗi ngày</Text>
         </Animated.View>
@@ -293,7 +294,7 @@ const styles = StyleSheet.create({
   },
   switcher: {
     flexDirection: 'row',
-    backgroundColor: '#F0EFED',
+    backgroundColor: appTheme.light.appSurfaceMuted,
     borderRadius: 8,
     padding: 3,
     marginBottom: 24,
@@ -351,10 +352,10 @@ const styles = StyleSheet.create({
     backgroundColor: C.bg,
   },
   successBanner: {
-    backgroundColor: '#F0F6EF',
+    backgroundColor: appTheme.light.appSecondaryContainer,
     borderRadius: 6,
     borderWidth: 1,
-    borderColor: '#D8E5D5',
+    borderColor: appTheme.light.appBorder,
     paddingHorizontal: 14,
     paddingVertical: 12,
     marginBottom: 18,
@@ -363,20 +364,20 @@ const styles = StyleSheet.create({
     fontFamily: F_SANS,
     fontSize: 13,
     fontWeight: '700',
-    color: '#346538',
+    color: appTheme.light.appSuccess,
   },
   successText: {
     marginTop: 4,
     fontFamily: F_SANS,
     fontSize: 13,
-    color: '#527157',
+    color: appTheme.light.appSecondary,
     lineHeight: 19,
   },
   errorBanner: {
     backgroundColor: C.dangerBg,
     borderRadius: 6,
     borderWidth: 1,
-    borderColor: '#FBCCCB',
+    borderColor: appTheme.light.appBorder,
     paddingHorizontal: 14,
     paddingVertical: 10,
     marginBottom: 16,
@@ -396,7 +397,7 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   primaryBtnDisabled: {
-    backgroundColor: '#555555',
+    backgroundColor: appTheme.light.appTextMuted,
   },
   primaryBtnText: {
     fontFamily: F_SANS,

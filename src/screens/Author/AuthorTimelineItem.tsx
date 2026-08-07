@@ -4,6 +4,7 @@ import { Clock, Eye, Lock } from 'lucide-react-native';
 import { Article } from '../../types/content';
 import { useAppStore } from '../../store/useAppStore';
 import { scaleFont, scaleLineHeight } from '../../theme/typography';
+import { appTheme } from '../../theme/colors';
 
 interface AuthorTimelineItemProps {
   item: Article;
@@ -174,7 +175,7 @@ const styles = StyleSheet.create({
     borderRadius: 4,
   },
   vipBadgeText: {
-    color: '#FFFFFF',
+    color: appTheme.light.appHeaderText,
     fontSize: 9,
     fontWeight: 'bold',
   },

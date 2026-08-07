@@ -15,6 +15,7 @@ import { ArrowLeft, Check, Crown } from 'lucide-react-native';
 import { apiClient } from '../../services/api/client';
 import { useAppStore } from '../../store/useAppStore';
 import { VipPackage } from '../../types/content';
+import { appTheme } from '../../theme/colors';
 
 const F_SERIF = Platform.select({
   ios: 'Georgia',
@@ -29,6 +30,7 @@ const getFinalPrice = (pkg: VipPackage) =>
 export default function VipPackagesScreen({ navigation }: any) {
   const { getColors, themeMode } = useAppStore();
   const colors = getColors();
+  const shell = appTheme[themeMode];
   const [packages, setPackages] = useState<VipPackage[]>([]);
   const [selectedPackageId, setSelectedPackageId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
@@ -110,7 +112,7 @@ export default function VipPackagesScreen({ navigation }: any) {
   const selectedPrice = selectedPackage
     ? getFinalPrice(selectedPackage).toLocaleString('vi-VN')
     : '';
-  const selectedSurface = themeMode === 'dark' ? '#302B1E' : '#FBF3DB';
+  const selectedSurface = shell.appYellowContainer;
 
   return (
     <SafeAreaView
@@ -120,7 +122,7 @@ export default function VipPackagesScreen({ navigation }: any) {
       <View
         style={[
           styles.header,
-          { backgroundColor: colors.card, borderBottomColor: colors.border },
+          { backgroundColor: shell.appHeader, borderBottomColor: shell.appBorder },
         ]}
       >
         <TouchableOpacity
@@ -128,9 +130,9 @@ export default function VipPackagesScreen({ navigation }: any) {
           style={styles.backButton}
           onPress={() => navigation.goBack()}
         >
-          <ArrowLeft color={colors.text} size={22} {...IC} />
+          <ArrowLeft color={shell.appHeaderText} size={22} {...IC} />
         </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: colors.text }]}>
+        <Text style={[styles.headerTitle, { color: shell.appHeaderText }]}>
           Gói thành viên
         </Text>
         <View style={styles.headerSpacer} />
@@ -164,8 +166,8 @@ export default function VipPackagesScreen({ navigation }: any) {
             'Quyền đọc được cập nhật sau khi VNPay xác nhận',
           ].map((benefit) => (
             <View key={benefit} style={styles.benefitRow}>
-              <View style={[styles.checkBox, { backgroundColor: '#EDF3EC' }]}>
-                <Check color="#346538" size={14} {...IC} />
+              <View style={[styles.checkBox, { backgroundColor: shell.appSecondaryContainer }]}>
+                <Check color={shell.appSuccess} size={14} {...IC} />
               </View>
               <Text style={[styles.benefitText, { color: colors.text }]}>
                 {benefit}
@@ -452,11 +454,11 @@ const styles = StyleSheet.create({
     marginLeft: 8,
     paddingHorizontal: 7,
     paddingVertical: 3,
-    backgroundColor: '#FBF3DB',
+    backgroundColor: appTheme.light.appYellowContainer,
     borderRadius: 999,
   },
   recommendedText: {
-    color: '#956400',
+    color: appTheme.light.appWarning,
     fontSize: 8,
     fontWeight: '800',
     letterSpacing: 0.6,
@@ -473,7 +475,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: 'rgba(120,119,116,0.24)',
+    borderTopColor: appTheme.light.appBorder,
   },
   discountRow: {
     flexDirection: 'row',
@@ -487,11 +489,11 @@ const styles = StyleSheet.create({
     marginLeft: 7,
     paddingHorizontal: 6,
     paddingVertical: 3,
-    backgroundColor: '#FDEBEC',
+    backgroundColor: appTheme.light.appPrimaryContainer,
     borderRadius: 999,
   },
   discountText: {
-    color: '#9F2F2D',
+    color: appTheme.light.appError,
     fontSize: 9,
     fontWeight: '800',
   },

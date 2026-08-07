@@ -2,6 +2,7 @@ import React from 'react';
 import { StyleSheet, View, Text } from 'react-native';
 import { TrendingUp } from 'lucide-react-native';
 import { C, F_SANS, IC } from './constants';
+import { appTheme } from '../../theme/colors';
 
 interface DiscoverTopicsProps {
   categoryName?: string;
@@ -15,8 +16,8 @@ export default function DiscoverTopics({ categoryName }: DiscoverTopicsProps) {
         <Text style={styles.topicsHeaderTitle}>Khám phá thêm chủ đề</Text>
       </View>
       <View style={styles.topicsList}>
-        <View style={[styles.topicTagBtn, { backgroundColor: '#E1F3FE' }]}>
-          <Text style={[styles.topicTagText, { color: '#1F6C9F' }]}>{categoryName?.toUpperCase() || 'TIN TỨC'}</Text>
+        <View style={[styles.topicTagBtn, { backgroundColor: appTheme.light.appBlueContainer }]}>
+          <Text style={[styles.topicTagText, { color: appTheme.light.appHeader }]}>{categoryName?.toUpperCase() || 'TIN TỨC'}</Text>
         </View>
       </View>
     </View>

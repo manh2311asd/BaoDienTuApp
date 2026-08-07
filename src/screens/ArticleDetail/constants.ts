@@ -1,4 +1,5 @@
 import { Platform } from 'react-native';
+import { appTheme } from '../../theme/colors';
 
 export const F_SERIF = Platform.select({
   ios: 'Georgia',
@@ -15,11 +16,11 @@ export const F_SANS = Platform.select({
 export const IC = { strokeWidth: 2 } as const;
 
 export const C = {
-  bg: '#FCFBF9',
-  card: '#FFFFFF',
-  border: '#EAEAEA',
-  ink: '#111111',
-  muted: '#787774',
-  accent: '#1F6C9F',
-  accentBg: '#E1F3FE',
+  bg: appTheme.light.appReadingBackground,
+  card: appTheme.light.appSurface,
+  border: appTheme.light.appBorder,
+  ink: appTheme.light.appTextPrimary,
+  muted: appTheme.light.appTextSecondary,
+  accent: appTheme.light.appPrimary,
+  accentBg: appTheme.light.appPrimaryContainer,
 } as const;

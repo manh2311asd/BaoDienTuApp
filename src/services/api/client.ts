@@ -10,9 +10,20 @@ import {
   StaffArticleInput,
   AdminUser,
   AuthorStatsSummary,
+  PublicUserProfile,
+  UserCommentActivity,
+  PaginatedResponse,
 } from '../../types/content';
 import { useAppStore, UserSession } from '../../store/useAppStore';
 import { clearStoredSession } from '../sessionStorage';
+import {
+  ExchangeRate,
+  FootballMatch,
+  FootballStanding,
+  GoldPrice,
+  LotteryDraw,
+  UtilityEnvelope,
+} from '../../types/utilities';
 
 const DEFAULT_DEVELOPMENT_API_URL = 'http://172.18.61.23:8082';
 export const BASE_URL =
@@ -92,6 +103,15 @@ export interface ApiResponse<T> {
   message?: string;
 }
 
+export interface PaginatedResponse<T> {
+  content: T[];
+  page: number;
+  size: number;
+  totalElements: number;
+  totalPages: number;
+  last: boolean;
+}
+
 export const apiClient = {
   // Authentication
   login: async (email: string, password_plain: string): Promise<ApiResponse<UserSession>> => {
@@ -145,23 +165,23 @@ export const apiClient = {
     }
   },
 
-  // Articles Search
-  searchArticles: async (
-    keyword?: string,
-    categoryId?: number,
-    authorName?: string,
-    authorId?: number
-  ): Promise<ApiResponse<Article[]>> => {
+  searchArticles: async (params: {
+    keyword?: string;
+    categoryId?: number;
+    authorName?: string;
+    authorId?: number;
+    sourceName?: string;
+    origin?: 'INTERNAL' | 'EXTERNAL';
+    page?: number;
+    size?: number;
+  }): Promise<ApiResponse<Article[] | PaginatedResponse<Article>>> => {
     try {
-      const res = await api.get('/api/articles/search', {
-        params: {
-          keyword,
-          categoryId,
-          authorName,
-          authorId,
-        },
-      });
-      const mapped: Article[] = res.data.map((item: any) => ({
+      const res = await api.get('/api/articles/search', { params });
+
+      const isPaginated = res.data && typeof res.data === 'object' && 'content' in res.data;
+      const rawList = isPaginated ? res.data.content : res.data;
+
+      const mapped: Article[] = rawList.map((item: any) => ({
         id: item.id,
         authorId: item.authorId || 0,
         authorName: item.authorName || 'Ẩn danh',
@@ -176,7 +196,25 @@ export const apiClient = {
         status: 'PUBLISHED',
         viewCount: item.viewCount || 0,
         createdAt: item.createdAt,
+        origin: item.origin || 'INTERNAL',
+        originalUrl: item.originalUrl || '',
+        sourceName: item.sourceName || '',
       }));
+
+      if (isPaginated) {
+        return {
+          data: {
+            content: mapped,
+            page: res.data.page,
+            size: res.data.size,
+            totalElements: res.data.totalElements,
+            totalPages: res.data.totalPages,
+            last: res.data.last,
+          } as PaginatedResponse<Article>,
+          status: res.status,
+        };
+      }
+
       return { data: mapped, status: res.status };
     } catch (e: any) {
       throw new Error(e.response?.data?.message || e.message || 'Tìm kiếm bài viết thất bại');
@@ -284,6 +322,15 @@ export const apiClient = {
         userName: c.userName || 'Độc giả',
         content: c.content,
         createdAt: c.createdAt,
+        user: c.user ? {
+          id: c.user.id,
+          displayName: c.user.displayName,
+          avatarUrl: resolveApiAssetUrl(c.user.avatarUrl),
+        } : undefined,
+        article: c.article ? {
+          id: c.article.id,
+          title: c.article.title,
+        } : undefined,
       }));
       return { data: mapped, status: res.status };
     } catch (e: any) {
@@ -302,6 +349,15 @@ export const apiClient = {
         userName: c.userName || 'Độc giả',
         content: c.content,
         createdAt: c.createdAt,
+        user: c.user ? {
+          id: c.user.id,
+          displayName: c.user.displayName,
+          avatarUrl: resolveApiAssetUrl(c.user.avatarUrl),
+        } : undefined,
+        article: c.article ? {
+          id: c.article.id,
+          title: c.article.title,
+        } : undefined,
       };
       return { data: mapped, status: res.status };
     } catch (e: any) {
@@ -815,6 +871,179 @@ export const apiClient = {
       throw new Error(
         e.response?.data?.message || e.message || 'Không thể đổi trạng thái'
       );
+    }
+  },
+
+  getFootballMatches: async (params: {
+    dateFrom: string;
+    dateTo: string;
+    competition?: string;
+  }): Promise<ApiResponse<UtilityEnvelope<FootballMatch[]>>> => {
+    try {
+      const res = await api.get('/api/utilities/football/matches', { params });
+      return { data: res.data, status: res.status };
+    } catch (e: any) {
+      if (e.response?.status === 503) {
+        throw new Error('Nguồn Bóng đá chưa được cấu hình trên server');
+      }
+      if (e.response?.status >= 500) {
+        throw new Error('Nguồn Bóng đá hiện chưa khả dụng');
+      }
+      throw new Error(
+        e.response?.data?.detail ||
+          e.response?.data?.message ||
+          e.message ||
+          'Không thể cập nhật Bóng đá'
+      );
+    }
+  },
+
+  getFootballStandings: async (params: {
+    competition: string;
+    season?: number;
+  }): Promise<ApiResponse<UtilityEnvelope<FootballStanding[]>>> => {
+    try {
+      const res = await api.get('/api/utilities/football/standings', { params });
+      return { data: res.data, status: res.status };
+    } catch (e: any) {
+      if (e.response?.status === 503) {
+        throw new Error('Nguồn Bóng đá chưa được cấu hình trên server');
+      }
+      if (e.response?.status >= 500) {
+        throw new Error('Nguồn Bóng đá hiện chưa khả dụng');
+      }
+      throw new Error(
+        e.response?.data?.detail ||
+          e.response?.data?.message ||
+          e.message ||
+          'Không thể cập nhật bảng xếp hạng'
+      );
+    }
+  },
+
+  getExchangeRates: async (): Promise<
+    ApiResponse<UtilityEnvelope<ExchangeRate[]>>
+  > => {
+    try {
+      const res = await api.get('/api/utilities/finance/exchange-rates');
+      return {
+        data: {
+          ...res.data,
+          data: (res.data.data || []).map((item: any) => ({
+            code: item.code,
+            name: item.name,
+            cashBuy: item.cashBuy == null ? null : Number(item.cashBuy),
+            transferBuy:
+              item.transferBuy == null ? null : Number(item.transferBuy),
+            sell: item.sell == null ? null : Number(item.sell),
+          })),
+        },
+        status: res.status,
+      };
+    } catch (e: any) {
+      throw new Error(
+        e.response?.data?.detail ||
+          e.response?.data?.message ||
+          e.message ||
+          'Không thể cập nhật tỷ giá'
+      );
+    }
+  },
+
+  getLotteryDraw: async (params: {
+    region: LotteryDraw['region'];
+    province?: string;
+    drawDate: string;
+    lotteryType?: string;
+  }): Promise<ApiResponse<UtilityEnvelope<LotteryDraw>>> => {
+    try {
+      const res = await api.get('/api/utilities/lottery', { params });
+      return { data: res.data, status: res.status };
+    } catch (e: any) {
+      if (e.response?.status === 503) {
+        throw new Error('Nguồn Xổ số chưa được cấu hình trên server');
+      }
+      if (e.response?.status >= 500) {
+        throw new Error('Nguồn Xổ số hiện chưa khả dụng');
+      }
+      throw new Error(
+        e.response?.data?.detail ||
+          e.response?.data?.message ||
+          e.message ||
+          'Không thể cập nhật kết quả Xổ số'
+      );
+    }
+  },
+
+  getGoldPrices: async (): Promise<
+    ApiResponse<UtilityEnvelope<GoldPrice[]>>
+  > => {
+    try {
+      const res = await api.get('/api/utilities/finance/gold');
+      return { data: res.data, status: res.status };
+    } catch (e: any) {
+      if (e.response?.status === 503) {
+        throw new Error('Nguồn Giá vàng chưa được cấu hình trên server');
+      }
+      if (e.response?.status >= 500) {
+        throw new Error('Nguồn Giá vàng hiện chưa khả dụng');
+      }
+      throw new Error(
+        e.response?.data?.detail ||
+          e.response?.data?.message ||
+          'Không thể cập nhật giá vàng'
+      );
+    }
+  },
+
+  getPublicProfile: async (userId: number): Promise<ApiResponse<PublicUserProfile>> => {
+    try {
+      const res = await api.get(`/api/users/${userId}/public-profile`);
+      const mapped: PublicUserProfile = {
+        ...res.data,
+        avatarUrl: resolveApiAssetUrl(res.data.avatarUrl),
+      };
+      return { data: mapped, status: res.status };
+    } catch (e: any) {
+      throw new Error(e.response?.data?.message || e.message || 'Lỗi tải hồ sơ người dùng');
+    }
+  },
+
+  getUserComments: async (
+    userId: number,
+    page: number,
+    size: number
+  ): Promise<ApiResponse<PaginatedResponse<UserCommentActivity>>> => {
+    try {
+      const res = await api.get(`/api/users/${userId}/comments`, {
+        params: { page, size },
+      });
+      // Spring Boot returns hasNext as true/false, or we can check last
+      const hasNext = res.data.last !== undefined ? !res.data.last : (res.data.number + 1 < res.data.totalPages);
+      
+      const contentMapped = (res.data.content || []).map((item: any) => ({
+        commentId: item.commentId,
+        content: item.content,
+        createdAt: item.createdAt,
+        article: item.article ? {
+          id: item.article.id,
+          title: item.article.title,
+          categoryName: item.article.categoryName,
+          thumbnailUrl: resolveApiAssetUrl(item.article.thumbnailUrl),
+        } : undefined,
+      }));
+
+      const mapped: PaginatedResponse<UserCommentActivity> = {
+        content: contentMapped,
+        page: res.data.number || 0,
+        size: res.data.size || 20,
+        totalElements: res.data.totalElements || 0,
+        totalPages: res.data.totalPages || 0,
+        hasNext: hasNext,
+      };
+      return { data: mapped, status: res.status };
+    } catch (e: any) {
+      throw new Error(e.response?.data?.message || e.message || 'Lỗi tải lịch sử bình luận');
     }
   },
 };

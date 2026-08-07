@@ -17,6 +17,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Check } from 'lucide-react-native';
+import { appTheme } from '../../theme/colors';
 
 const { width } = Dimensions.get('window');
 
@@ -112,7 +113,7 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         >
           <View style={styles.toastCard}>
             <View style={styles.iconCircle}>
-              <Check color="#FFFFFF" size={12} strokeWidth={3} />
+              <Check color={appTheme.light.appHeaderText} size={12} strokeWidth={3} />
             </View>
             <Text style={styles.toastText} numberOfLines={2}>
               {message}
@@ -135,28 +136,24 @@ const styles = StyleSheet.create({
   toastCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#18181B', // Dark theme slate-900 background
-    borderRadius: 99,           // Rounded-full Pill shape
+    backgroundColor: appTheme.light.appHeader,
+    borderRadius: 10,
     paddingVertical: 10,
     paddingHorizontal: 16,
     maxWidth: width - 48,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 4,
+    elevation: 0,
   },
   iconCircle: {
     width: 18,
     height: 18,
     borderRadius: 9,
-    backgroundColor: '#10B981', // Emerald green check background
+    backgroundColor: appTheme.light.appSuccess,
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 10,
   },
   toastText: {
-    color: '#FFFFFF',
+    color: appTheme.light.appHeaderText,
     fontSize: 13,
     fontWeight: '600',
     fontFamily: Platform.select({ ios: 'Helvetica Neue', android: 'sans-serif' }),

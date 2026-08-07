@@ -2,6 +2,8 @@ import React from 'react';
 import { StyleSheet, View, Text, TouchableOpacity, Animated } from 'react-native';
 import { Home, ChevronRight } from 'lucide-react-native';
 import { C, F_SANS, IC } from './constants';
+import { useAppStore } from '../../store/useAppStore';
+import { appTheme } from '../../theme/colors';
 
 interface DetailHeaderProps {
   article: any;
@@ -21,6 +23,8 @@ export default function DetailHeader({
   headerTranslateY,
 }: DetailHeaderProps) {
   const safeTop = insets.top > 0 ? insets.top : 20;
+  const themeMode = useAppStore((state) => state.themeMode);
+  const shell = appTheme[themeMode];
 
   return (
     <>
@@ -28,7 +32,7 @@ export default function DetailHeader({
         pointerEvents="none"
         style={[
           styles.safeAreaGuard,
-          { height: safeTop, backgroundColor: C.bg },
+          { height: safeTop, backgroundColor: shell.appHeader },
         ]}
       />
       <Animated.View
@@ -43,17 +47,18 @@ export default function DetailHeader({
             paddingTop: safeTop + 8,
             paddingBottom: 8,
             height: 48 + safeTop + 8,
+            backgroundColor: shell.appHeader,
             transform: [{ translateY: headerTranslateY }],
           }
         ]}
       >
         <View style={styles.breadcrumbHeader}>
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.breadcrumbHomeBtn}>
-            <Home color={C.ink} size={18} {...IC} />
+            <Home color={shell.appHeaderText} size={18} {...IC} />
           </TouchableOpacity>
-          <ChevronRight color={C.muted} size={12} style={styles.chevronIcon} />
-          <View style={styles.categoryPillBadge}>
-            <Text style={styles.categoryPillText}>
+          <ChevronRight color={shell.appHeaderTextSecondary} size={12} style={styles.chevronIcon} />
+          <View style={[styles.categoryPillBadge, { backgroundColor: shell.appPrimary }]}>
+            <Text style={[styles.categoryPillText, { color: shell.appHeaderText }]}>
               {article?.categoryName || 'Tin tức'}
             </Text>
           </View>
@@ -64,14 +69,15 @@ export default function DetailHeader({
           style={[
             styles.headerBottomBorder,
             {
-              opacity: headerBorderOpacity
+              opacity: headerBorderOpacity,
+              backgroundColor: shell.appBorder,
             }
           ]}
         />
 
         {/* P1.5 Thin Reading Progress Indicator embedded in bottom of header */}
         <View style={styles.progressContainer}>
-          <View style={[styles.progressBar, { width: `${scrollProgress * 100}%` }]} />
+          <View style={[styles.progressBar, { width: `${scrollProgress * 100}%`, backgroundColor: shell.appHeaderAccent }]} />
         </View>
       </Animated.View>
     </>
@@ -126,7 +132,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     height: 1,
-    backgroundColor: '#e4e4e7',
+    backgroundColor: appTheme.light.appBorder,
   },
   progressContainer: {
     position: 'absolute',

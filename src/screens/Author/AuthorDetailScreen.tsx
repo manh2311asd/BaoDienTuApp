@@ -16,6 +16,7 @@ import AuthorHeader from './AuthorHeader';
 import AuthorProfile from './AuthorProfile';
 import AuthorTimelineItem from './AuthorTimelineItem';
 import { useToast } from '../../components/Toast/ToastContext';
+import { appTheme } from '../../theme/colors';
 
 const AuthorDetailScreen = ({ route, navigation }: any) => {
   const { authorId, authorName } = route.params;
@@ -42,14 +43,13 @@ const AuthorDetailScreen = ({ route, navigation }: any) => {
     setIsLoading(true);
     setErrorMsg(null);
     try {
-      const res = await apiClient.searchArticles(
-        undefined,
-        undefined,
-        undefined,
-        authorId
-      );
+      const res = await apiClient.searchArticles({
+        authorId,
+        origin: 'INTERNAL'
+      });
+      const dataList = res.data && 'content' in res.data ? (res.data as any).content : res.data;
       // Sort articles descending
-      const sorted = [...res.data].sort(
+      const sorted = [...(dataList || [])].sort(
         (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
       );
       setArticles(sorted);
@@ -200,7 +200,7 @@ const styles = StyleSheet.create({
     borderRadius: 20,
   },
   retryText: {
-    color: '#FFFFFF',
+    color: appTheme.light.appHeaderText,
     fontWeight: 'bold',
   },
   listContent: {

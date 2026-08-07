@@ -1,18 +1,19 @@
 import { ArticleStatus } from '../../types/content';
+import { appTheme } from '../../theme/colors';
 
 export const STAFF_COLORS = {
-  ink: '#111111',
-  muted: '#787774',
-  border: '#EAEAEA',
-  blueBg: '#E1F3FE',
-  blueText: '#1F6C9F',
-  greenBg: '#EDF3EC',
-  greenText: '#346538',
-  yellowBg: '#FBF3DB',
-  yellowText: '#956400',
-  redBg: '#FDEBEC',
-  redText: '#9F2F2D',
-  grayBg: '#F0EFED',
+  ink: appTheme.light.appTextPrimary,
+  muted: appTheme.light.appTextSecondary,
+  border: appTheme.light.appBorder,
+  blueBg: appTheme.light.appBlueContainer,
+  blueText: appTheme.light.appHeader,
+  greenBg: appTheme.light.appSecondaryContainer,
+  greenText: appTheme.light.appSuccess,
+  yellowBg: appTheme.light.appYellowContainer,
+  yellowText: appTheme.light.appWarning,
+  redBg: appTheme.light.appPrimaryContainer,
+  redText: appTheme.light.appError,
+  grayBg: appTheme.light.appSurfaceMuted,
 };
 
 export const STATUS_META: Record<

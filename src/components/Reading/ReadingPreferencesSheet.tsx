@@ -13,11 +13,7 @@ import {
 import { Database, Image as ImageIcon, Moon, X } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { FontSize, useAppStore } from '../../store/useAppStore';
-import {
-  FONT_SIZE_OPTIONS,
-  scaleFont,
-  scaleLineHeight,
-} from '../../theme/typography';
+import { FONT_SIZE_OPTIONS } from '../../theme/typography';
 
 interface ReadingPreferencesSheetProps {
   visible: boolean;
@@ -189,44 +185,7 @@ export default function ReadingPreferencesSheet({
                 })}
               </View>
 
-              <View
-                style={[
-                  styles.preview,
-                  {
-                    backgroundColor: colors.background,
-                    borderColor: colors.border,
-                  },
-                ]}
-              >
-                <Text style={[styles.previewLabel, { color: colors.primary }]}>
-                  XEM TRƯỚC
-                </Text>
-                <Text
-                  style={[
-                    styles.previewTitle,
-                    {
-                      color: colors.text,
-                      fontSize: scaleFont(19, draftFontSize),
-                      lineHeight: scaleLineHeight(24, draftFontSize),
-                    },
-                  ]}
-                >
-                  Tin tức rõ ràng, dễ đọc hơn mỗi ngày
-                </Text>
-                <Text
-                  style={[
-                    styles.previewBody,
-                    {
-                      color: colors.textMuted,
-                      fontSize: scaleFont(14, draftFontSize),
-                      lineHeight: scaleLineHeight(21, draftFontSize),
-                    },
-                  ]}
-                >
-                  Cỡ chữ này sẽ được áp dụng cho tiêu đề, tóm tắt và nội dung
-                  bài báo.
-                </Text>
-              </View>
+
 
               <TouchableOpacity
                 activeOpacity={0.82}

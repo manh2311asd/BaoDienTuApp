@@ -41,6 +41,9 @@ export interface Article {
   viewCount: number;
   createdAt: string;
   rejectionReason?: string | null;
+  origin?: 'INTERNAL' | 'EXTERNAL';
+  originalUrl?: string;
+  sourceName?: string;
 }
 
 export interface StaffArticleInput {
@@ -77,7 +80,46 @@ export interface Comment {
   userName: string;
   content: string;
   createdAt: string;
+  user?: {
+    id: number;
+    displayName: string;
+    avatarUrl?: string;
+  };
+  article?: {
+    id: number;
+    title: string;
+  };
 }
+
+export interface PublicUserProfile {
+  id: number;
+  displayName: string;
+  avatarUrl?: string;
+  role: string;
+  commentCount: number;
+}
+
+export interface UserCommentActivity {
+  commentId: number;
+  content: string;
+  createdAt: string;
+  article: {
+    id: number;
+    title: string;
+    categoryName: string;
+    thumbnailUrl?: string;
+  };
+}
+
+export interface PaginatedResponse<T> {
+  content: T[];
+  page: number;
+  size: number;
+  totalElements: number;
+  totalPages: number;
+  hasNext: boolean;
+}
+
 
 export interface VipPackage {
   id: number;
