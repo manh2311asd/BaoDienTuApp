@@ -263,7 +263,7 @@ export default function ArticleEditorScreen({ route, navigation }: any) {
     >
       <StaffHeader
         title={articleId ? 'Chỉnh sửa bài' : 'Bài viết mới'}
-        eyebrow="THE DAILY STUDIO"
+        eyebrow="NEWSDAILY STUDIO"
         onBack={() => navigation.goBack()}
         actionLabel={preview ? 'SOẠN' : 'XEM TRƯỚC'}
         onAction={() => setPreview((value) => !value)}

@@ -6,10 +6,13 @@ import {
   TouchableOpacity,
   FlatList,
   Platform,
+  StatusBar,
 } from 'react-native';
 import { ArrowLeft, Star } from 'lucide-react-native';
 import solarLunar from 'solarlunar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useAppStore } from '../../store/useAppStore';
+import { appTheme, utilityThemes } from '../../theme/colors';
 
 interface CalendarMonth {
   year: number;
@@ -24,16 +27,30 @@ const IC = { strokeWidth: 2 } as const;
 
 // §4 Palette
 const C = {
-  bg:       '#FCFBF9',
-  card:     '#FFFFFF',
-  border:   '#EAEAEA',
-  ink:      '#111111',
-  muted:    '#787774',
-  danger:   '#9F2F2D',
-  accent:   '#1F6C9F',
-  accentBg: '#E1F3FE',
-  vip:      '#956400',
-  vipBg:    '#FBF3DB',
+  bg: utilityThemes.calendar.canvas,
+  card: appTheme.light.appSurface,
+  border: appTheme.light.appBorder,
+  ink: appTheme.light.appTextPrimary,
+  muted: appTheme.light.appTextSecondary,
+  danger: appTheme.light.appError,
+  accent: utilityThemes.calendar.accent,
+  accentBg: utilityThemes.calendar.container,
+  vip: appTheme.light.appWarning,
+  vipBg: appTheme.light.appYellowContainer,
+};
+
+const DARK_C = {
+  ...C,
+  bg: appTheme.dark.appBackground,
+  card: appTheme.dark.appSurface,
+  border: appTheme.dark.appBorder,
+  ink: appTheme.dark.appTextPrimary,
+  muted: appTheme.dark.appTextSecondary,
+  danger: appTheme.dark.appError,
+  accent: utilityThemes.calendar.darkAccent,
+  accentBg: utilityThemes.calendar.darkContainer,
+  vip: appTheme.dark.appWarning,
+  vipBg: appTheme.dark.appYellowContainer,
 };
 
 // Vietnam Solar Holidays mapping: "Month-Day" -> Holiday details
@@ -66,7 +83,7 @@ const LUNAR_HOLIDAYS: Record<string, { name: string; star: boolean }> = {
   '12-23': { name: 'Ngày đưa ông Táo về trời', star: false },
 };
 
-const getHoliday = (day: number, month: number, year: number, lunarCal: any) => {
+const getHoliday = (day: number, month: number, lunarCal: any) => {
   const solarKey = `${month}-${day}`;
   if (SOLAR_HOLIDAYS[solarKey]) {
     return SOLAR_HOLIDAYS[solarKey];
@@ -90,6 +107,8 @@ const getYearCanChi = (lunarYear: number) => {
 
 export default function CalendarScreen({ navigation }: any) {
   const insets = useSafeAreaInsets();
+  const themeMode = useAppStore((state) => state.themeMode);
+  const P = themeMode === 'dark' ? DARK_C : C;
   const flatListRef = useRef<FlatList>(null);
 
   // Dynamic selected date: Default to TODAY (New Date)
@@ -149,7 +168,6 @@ export default function CalendarScreen({ navigation }: any) {
   const selectedHoliday = getHoliday(
     selectedDate.getDate(),
     selectedDate.getMonth() + 1,
-    selectedDate.getFullYear(),
     selectedLunar
   );
 
@@ -189,15 +207,17 @@ export default function CalendarScreen({ navigation }: any) {
       const lMonth = lunarCal.lMonth;
       const isFirstLunarDay = lDay === 1;
 
-      const holiday = getHoliday(day, month, year, lunarCal);
+      const holiday = getHoliday(day, month, lunarCal);
       const hasStar = holiday?.star === true;
 
       const isSunday = (startOffset + day - 1) % 7 === 6;
       const isSaturday = (startOffset + day - 1) % 7 === 5;
       
-      let dayTextColor = C.ink;
-      if (isSunday) dayTextColor = C.danger;
-      else if (isSaturday) dayTextColor = C.accent;
+      let dayTextColor = P.ink;
+      if (isSunday) dayTextColor = P.danger;
+      else if (isSaturday) dayTextColor = themeMode === 'dark'
+        ? utilityThemes.finance.darkAccent
+        : utilityThemes.finance.accent;
 
       days.push(
         <TouchableOpacity
@@ -208,8 +228,8 @@ export default function CalendarScreen({ navigation }: any) {
           <View
             style={[
               styles.dayCircle,
-              isToday && { borderColor: C.ink, borderWidth: 1.5 },
-              isSelected && { backgroundColor: C.ink },
+              isToday && { borderColor: P.accent, borderWidth: 1.5 },
+              isSelected && { backgroundColor: P.accent },
             ]}
           >
             {/* Solar day number with conditional Star (P1.11 React Native Safe) */}
@@ -217,27 +237,20 @@ export default function CalendarScreen({ navigation }: any) {
               <Text
                 style={[
                   styles.solarText,
-                  { color: isSelected ? '#FFFFFF' : dayTextColor },
-                  isToday && !isSelected && { color: C.ink },
+                  { color: isSelected ? appTheme.light.appHeaderText : dayTextColor },
+                  isToday && !isSelected && { color: P.ink },
                 ]}
               >
                 {day}
               </Text>
-              {hasStar ? (
-                <Star
-                  fill="#F59E0B"
-                  color="#F59E0B"
-                  size={7}
-                  style={styles.starIcon}
-                />
-              ) : null}
+              {hasStar ? <View style={styles.eventDot} /> : null}
             </View>
 
             {/* Lunar day string */}
             <Text
               style={[
                 styles.lunarText,
-                { color: isSelected ? 'rgba(255,255,255,0.8)' : C.muted },
+                { color: isSelected ? 'rgba(255,255,255,0.8)' : P.muted },
               ]}
             >
               {isFirstLunarDay ? `${lDay}/${lMonth}` : `${lDay}`}
@@ -264,8 +277,13 @@ export default function CalendarScreen({ navigation }: any) {
             key={h}
             style={[
               styles.weekHeaderCell,
-              i === 6 && { color: C.danger },
-              i === 5 && { color: C.accent },
+              { color: P.muted },
+              i === 6 && { color: P.danger },
+              i === 5 && {
+                color: themeMode === 'dark'
+                  ? utilityThemes.finance.darkAccent
+                  : utilityThemes.finance.accent,
+              },
             ]}
             maxFontSizeMultiplier={1.4}
           >
@@ -288,53 +306,61 @@ export default function CalendarScreen({ navigation }: any) {
     }
 
     return (
-      <View style={styles.monthCard}>
-        <Text style={styles.monthTitle} maxFontSizeMultiplier={1.4}>
+      <View style={[styles.monthCard, { backgroundColor: P.card, borderColor: P.border }]}>
+        <Text style={[styles.monthTitle, { color: P.ink }]} maxFontSizeMultiplier={1.4}>
           Tháng {month}, {year}
         </Text>
         <View style={styles.gridContainer}>{rows}</View>
       </View>
     );
-  }, [selectedDate]);
+  }, [P, selectedDate, themeMode]);
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: P.bg }]}>
+      <StatusBar barStyle="light-content" backgroundColor={P.accent} />
       {/* Header bar */}
       <View
         style={[
           styles.headerContainer,
-          { paddingTop: (insets.top > 0 ? insets.top : 12) + 8 },
+          {
+            paddingTop: (insets.top > 0 ? insets.top : 12) + 8,
+            backgroundColor: P.accent,
+            borderColor: P.border,
+          },
         ]}
       >
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.headerBtn}>
-          <ArrowLeft color={C.ink} size={22} {...IC} />
+          <ArrowLeft color={appTheme.light.appHeaderText} size={22} {...IC} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle} maxFontSizeMultiplier={1.4}>Lịch</Text>
+        <Text style={[styles.headerTitle, { color: appTheme.light.appHeaderText }]} maxFontSizeMultiplier={1.4}>Lịch</Text>
         <View style={{ width: 30 }} />
       </View>
 
       {/* Selected Day Info Board */}
       <View style={styles.topBoard}>
-        <View style={styles.todayCard}>
-          <View style={styles.todayLeft}>
-            <Text style={styles.todayLabel} maxFontSizeMultiplier={1.3}>DƯƠNG LỊCH</Text>
-            <Text style={styles.todayBigNumber} maxFontSizeMultiplier={1.5}>
+        <View style={[styles.todayCard, { backgroundColor: P.accentBg }]}>
+          <View style={[styles.todayLeft, { borderRightColor: P.border }]}>
+            <Text style={[styles.todayLabel, { color: P.danger }]} maxFontSizeMultiplier={1.3}>DƯƠNG LỊCH</Text>
+            <Text style={[styles.todayBigNumber, { color: P.ink }]} maxFontSizeMultiplier={1.5}>
               {selectedDate.getDate()}
             </Text>
           </View>
           <View style={styles.todayRight}>
-            <Text style={styles.todaySolarText} maxFontSizeMultiplier={1.4}>
+            <Text style={[styles.todaySolarText, { color: P.ink }]} maxFontSizeMultiplier={1.4}>
               {getDayName(selectedDate)}, {selectedDate.getDate()}/{selectedDate.getMonth() + 1}/{selectedDate.getFullYear()}
             </Text>
-            <Text style={styles.todayLunarText} maxFontSizeMultiplier={1.3}>
-              Âm lịch: Ngày {selectedLunar.lDay} tháng {selectedLunar.lMonth} năm {selectedYearCanChi}
+            <Text style={[styles.todayLunarText, { color: P.muted }]} maxFontSizeMultiplier={1.3}>
+              Âm lịch: {selectedLunar.lDay} tháng {selectedLunar.lMonth}
+            </Text>
+            <Text style={[styles.todayLunarText, { color: P.muted }]} maxFontSizeMultiplier={1.3}>
+              Năm: {selectedYearCanChi}
             </Text>
 
             {/* Display Holiday names (P1.11 React Native Safe) */}
             {selectedHoliday ? (
-              <View style={[styles.holidayBadge, { backgroundColor: selectedHoliday.star ? C.vipBg : C.accentBg }]}>
-                {selectedHoliday.star ? <Star fill="#F59E0B" color="#F59E0B" size={11} style={{ marginRight: 4 }} /> : null}
-                <Text style={[styles.holidayText, { color: selectedHoliday.star ? C.vip : C.accent }]} maxFontSizeMultiplier={1.3}>
+              <View style={[styles.holidayBadge, { backgroundColor: selectedHoliday.star ? P.vipBg : P.card }]}>
+                {selectedHoliday.star ? <Star fill={P.vip} color={P.vip} size={11} style={{ marginRight: 4 }} /> : null}
+                <Text style={[styles.holidayText, { color: selectedHoliday.star ? P.vip : P.accent }]} maxFontSizeMultiplier={1.3}>
                   {selectedHoliday.name}
                 </Text>
               </View>
@@ -350,9 +376,9 @@ export default function CalendarScreen({ navigation }: any) {
         renderItem={renderMonthCard}
         keyExtractor={(item) => item.key}
         initialScrollIndex={getInitialScrollIndex()}
-        getItemLayout={(data, index) => ({
-          length: 356,
-          offset: 356 * index,
+        getItemLayout={(_data, index) => ({
+          length: 338,
+          offset: 338 * index,
           index,
         })}
         onEndReached={loadMoreMonths}
@@ -390,8 +416,8 @@ const styles = StyleSheet.create({
   },
   topBoard: {
     paddingHorizontal: 16,
-    paddingTop: 16,
-    paddingBottom: 4,
+    paddingTop: 12,
+    paddingBottom: 2,
   },
   listContent: {
     paddingHorizontal: 16,
@@ -400,12 +426,11 @@ const styles = StyleSheet.create({
   todayCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: C.border,
-    padding: 16,
-    marginBottom: 10,
-    backgroundColor: C.card,
+    minHeight: 118,
+    borderRadius: 10,
+    padding: 14,
+    marginBottom: 8,
+    backgroundColor: C.accentBg,
   },
   todayLeft: {
     alignItems: 'center',
@@ -443,6 +468,7 @@ const styles = StyleSheet.create({
     fontFamily: F_SANS,
     fontSize: 13,
     color: C.muted,
+    marginTop: 2,
   },
   holidayBadge: {
     flexDirection: 'row',
@@ -459,21 +485,21 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   monthCard: {
-    borderRadius: 12,
+    borderRadius: 10,
     borderWidth: 1,
     borderColor: C.border,
-    padding: 16,
-    marginTop: 12,
+    padding: 14,
+    marginTop: 10,
     marginBottom: 6,
     backgroundColor: C.card,
-    height: 338,
+    height: 320,
   },
   monthTitle: {
     fontFamily: F_SERIF,
     fontSize: 16,
     fontWeight: '700',
     color: C.ink,
-    marginBottom: 16,
+    marginBottom: 12,
     textAlign: 'center',
   },
   gridContainer: {
@@ -482,7 +508,7 @@ const styles = StyleSheet.create({
   weekRow: {
     flexDirection: 'row',
     justifyContent: 'space-around',
-    marginBottom: 10,
+    marginBottom: 7,
   },
   weekHeaderCell: {
     fontFamily: F_SANS,
@@ -516,9 +542,13 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
   },
-  starIcon: {
-    marginLeft: 1,
-    marginTop: -2,
+  eventDot: {
+    width: 4,
+    height: 4,
+    marginLeft: 2,
+    marginTop: 1,
+    borderRadius: 2,
+    backgroundColor: appTheme.light.appWarning,
   },
   lunarText: {
     fontFamily: F_SANS,

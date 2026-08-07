@@ -245,7 +245,7 @@ export default function StaffWorkspaceScreen({ navigation }: any) {
               ? 'Trung tâm quản trị'
               : 'Bàn kiểm duyệt'
         }
-        eyebrow={isAuthor ? 'THE DAILY STUDIO' : 'THE DAILY DESK'}
+        eyebrow={isAuthor ? 'NEWSDAILY STUDIO' : 'NEWSDAILY DESK'}
         onBack={() => navigation.goBack()}
         actionLabel={isAuthor ? 'VIẾT BÀI' : undefined}
         onAction={() => navigation.navigate('ArticleEditor')}

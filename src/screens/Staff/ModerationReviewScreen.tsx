@@ -22,6 +22,7 @@ import { useToast } from '../../components/Toast/ToastContext';
 import AppActionSheet from '../../components/Feedback/AppActionSheet';
 import StaffHeader from './StaffHeader';
 import { formatStaffDate, STAFF_COLORS } from './staffUi';
+import { appTheme } from '../../theme/colors';
 
 const F_SERIF = Platform.select({
   ios: 'Georgia',
@@ -94,7 +95,7 @@ export default function ModerationReviewScreen({ route, navigation }: any) {
       <View style={[styles.root, { backgroundColor: colors.background }]}>
         <StaffHeader
           title="Kiểm duyệt bài"
-          eyebrow="THE DAILY DESK"
+          eyebrow="NEWSDAILY DESK"
           onBack={() => navigation.goBack()}
         />
         <View style={styles.center}>
@@ -110,7 +111,7 @@ export default function ModerationReviewScreen({ route, navigation }: any) {
     <View style={[styles.root, { backgroundColor: colors.background }]}>
       <StaffHeader
         title="Kiểm duyệt bài"
-        eyebrow="THE DAILY DESK"
+        eyebrow="NEWSDAILY DESK"
         onBack={() => navigation.goBack()}
       />
       <ScrollView
@@ -283,7 +284,7 @@ export default function ModerationReviewScreen({ route, navigation }: any) {
                 onPress={() => decide(false)}
               >
                 {deciding ? (
-                  <ActivityIndicator color="#FFFFFF" size="small" />
+                  <ActivityIndicator color={appTheme.light.appHeaderText} size="small" />
                 ) : (
                   <Text style={styles.sendBackText}>Gửi lại tác giả</Text>
                 )}
@@ -385,5 +386,5 @@ const styles = StyleSheet.create({
   },
   sendBackButton: { flex: 1.25, height: 48, alignItems: 'center', justifyContent: 'center', borderRadius: 6 },
   cancelText: { fontSize: 12, fontWeight: '800' },
-  sendBackText: { color: '#FFFFFF', fontSize: 12, fontWeight: '800' },
+  sendBackText: { color: appTheme.light.appHeaderText, fontSize: 12, fontWeight: '800' },
 });

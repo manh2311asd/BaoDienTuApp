@@ -8,6 +8,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAppStore } from '../../store/useAppStore';
+import { appTheme } from '../../theme/colors';
 
 const F_SERIF = Platform.select({
   ios: 'Georgia',
@@ -30,7 +31,8 @@ export default function StaffHeader({
   actionLabel,
   onAction,
 }: StaffHeaderProps) {
-  const colors = useAppStore((state) => state.getColors());
+  const themeMode = useAppStore((state) => state.themeMode);
+  const shell = appTheme[themeMode];
   const insets = useSafeAreaInsets();
 
   return (
@@ -39,8 +41,8 @@ export default function StaffHeader({
         styles.root,
         {
           paddingTop: Math.max(insets.top, 12),
-          backgroundColor: colors.card,
-          borderBottomColor: colors.border,
+          backgroundColor: shell.appHeader,
+          borderBottomColor: shell.appBorder,
         },
       ]}
     >
@@ -49,22 +51,22 @@ export default function StaffHeader({
         style={styles.side}
         onPress={onBack}
       >
-        <Text style={[styles.back, { color: colors.text }]}>‹</Text>
+        <Text style={[styles.back, { color: shell.appHeaderText }]}>‹</Text>
       </TouchableOpacity>
       <View style={styles.copy}>
         {!!eyebrow && (
-          <Text style={[styles.eyebrow, { color: colors.primary }]}>
+          <Text style={[styles.eyebrow, { color: shell.appHeaderAccent }]}>
             {eyebrow}
           </Text>
         )}
-        <Text style={[styles.title, { color: colors.text }]} numberOfLines={1}>
+        <Text style={[styles.title, { color: shell.appHeaderText }]} numberOfLines={1}>
           {title}
         </Text>
       </View>
       <View style={styles.side}>
         {!!actionLabel && (
           <TouchableOpacity onPress={onAction}>
-            <Text style={[styles.action, { color: colors.primary }]}>
+            <Text style={[styles.action, { color: shell.appHeaderAccent }]}>
               {actionLabel}
             </Text>
           </TouchableOpacity>

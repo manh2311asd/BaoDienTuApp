@@ -14,6 +14,7 @@ import { localDB } from '../../services/localDB';
 import { Article } from '../../types/content';
 import { DownloadCloud, Trash2, FileText } from 'lucide-react-native';
 import { Platform } from 'react-native';
+import { appTheme } from '../../theme/colors';
 
 const F_SANS = Platform.select({ ios: 'Helvetica Neue', android: 'sans-serif', default: 'System' });
 const F_MED  = Platform.select({ ios: 'Helvetica Neue', android: 'sans-serif-medium', default: 'System' });
@@ -87,7 +88,7 @@ const OfflineReadingScreen = ({ navigation }: any) => {
               style={[styles.readBtn, { backgroundColor: colors.primary }]}
               onPress={() => navigation.navigate('ArticleDetail', { articleId: item.id, isOffline: true })}
             >
-              <FileText color="#FFFFFF" size={14} {...IC} />
+              <FileText color={appTheme.light.appHeaderText} size={14} {...IC} />
               <Text style={styles.readBtnText}>Đọc Offline</Text>
             </TouchableOpacity>
 
@@ -212,7 +213,7 @@ const styles = StyleSheet.create({
     borderRadius: 6,     // A3 FIX: pill(14)→crisp(6)
   },
   readBtnText: {
-    color: '#FFFFFF',
+    color: appTheme.light.appHeaderText,
     fontSize: 12,
     fontWeight: '700',
     fontFamily: F_MED,

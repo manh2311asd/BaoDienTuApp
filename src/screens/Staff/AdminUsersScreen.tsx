@@ -125,7 +125,7 @@ export default function AdminUsersScreen({ navigation }: any) {
     <View style={[styles.root, { backgroundColor: colors.background }]}>
       <StaffHeader
         title="Quản lý người dùng"
-        eyebrow="THE DAILY ADMIN"
+        eyebrow="NEWSDAILY ADMIN"
         onBack={() => navigation.goBack()}
       />
       <View style={[styles.searchArea, { borderBottomColor: colors.border }]}>

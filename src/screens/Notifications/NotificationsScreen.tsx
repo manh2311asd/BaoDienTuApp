@@ -16,6 +16,7 @@ import { apiClient } from '../../services/api/client';
 import { Category, NewsNotification } from '../../types/content';
 import { useAppStore } from '../../store/useAppStore';
 import { useToast } from '../../components/Toast/ToastContext';
+import { appTheme } from '../../theme/colors';
 
 const F_SERIF = Platform.select({
   ios: 'Georgia',
@@ -50,6 +51,8 @@ const formatNotificationTime = (value: string) => {
 
 export default function NotificationsScreen({ navigation }: any) {
   const colors = useAppStore((state) => state.getColors());
+  const themeMode = useAppStore((state) => state.themeMode);
+  const shell = appTheme[themeMode];
   const showImages = useAppStore((state) => state.showImages);
   const { showToast } = useToast();
   const [notifications, setNotifications] = useState<NewsNotification[]>([]);
@@ -256,8 +259,8 @@ export default function NotificationsScreen({ navigation }: any) {
             value={notificationsEnabled}
             onValueChange={toggleNotifications}
             disabled={savingPreferences}
-            trackColor={{ false: colors.border, true: '#BFDDF0' }}
-            thumbColor={notificationsEnabled ? colors.primary : '#F5F5F5'}
+            trackColor={{ false: colors.border, true: shell.appPrimaryContainer }}
+            thumbColor={notificationsEnabled ? shell.appPrimary : shell.appTextMuted}
           />
         </View>
       </View>
@@ -285,17 +288,17 @@ export default function NotificationsScreen({ navigation }: any) {
       edges={['top']}
       style={[styles.root, { backgroundColor: colors.background }]}
     >
-      <View style={[styles.header, { borderBottomColor: colors.border }]}>
+      <View style={[styles.header, { backgroundColor: shell.appHeader, borderBottomColor: shell.appBorder }]}>
         <TouchableOpacity
           accessibilityLabel="Quay lại"
-          style={[styles.backButton, { borderColor: colors.border }]}
+          style={[styles.backButton, { borderColor: shell.appBorder }]}
           onPress={() => navigation.goBack()}
         >
-          <Text style={[styles.backGlyph, { color: colors.text }]}>‹</Text>
+          <Text style={[styles.backGlyph, { color: shell.appHeaderText }]}>‹</Text>
         </TouchableOpacity>
         <View style={styles.headerCopy}>
-          <Text style={[styles.title, { color: colors.text }]}>Thông báo</Text>
-          <Text style={[styles.subtitle, { color: colors.textMuted }]}>
+          <Text style={[styles.title, { color: shell.appHeaderText }]}>Thông báo</Text>
+          <Text style={[styles.subtitle, { color: shell.appHeaderTextSecondary }]}>
             Tin mới, phản hồi và quyền thành viên
           </Text>
         </View>

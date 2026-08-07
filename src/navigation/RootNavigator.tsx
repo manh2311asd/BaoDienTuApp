@@ -34,6 +34,7 @@ import PressReviewScreen from '../screens/Explore/PressReviewScreen';
 import FontTypographySettingsScreen from '../screens/Settings/FontTypographySettingsScreen';
 import AppearanceSettingsScreen from '../screens/Settings/AppearanceSettingsScreen';
 import DownloadDataSettingsScreen from '../screens/Settings/DownloadDataSettingsScreen';
+import PublicUserProfileScreen from '../screens/PublicUserProfile/PublicUserProfileScreen';
 
 export type RootStackParamList = {
   MainTabs: NavigatorScreenParams<TabParamList> | undefined;
@@ -61,6 +62,7 @@ export type RootStackParamList = {
   FontTypographySettings: undefined;
   AppearanceSettings: undefined;
   DownloadDataSettings: undefined;
+  PublicUserProfile: { userId: number };
 };
 
 export type TabParamList = {
@@ -330,6 +332,11 @@ export const RootNavigator = () => {
       <Stack.Screen
         name="DownloadDataSettings"
         component={DownloadDataSettingsScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="PublicUserProfile"
+        component={PublicUserProfileScreen}
         options={{ headerShown: false }}
       />
     </Stack.Navigator>

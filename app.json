@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "The Daily",
+    "name": "NewsDaily",
     "slug": "bao-dien-tu",
     "version": "1.0.2",
     "orientation": "portrait",
@@ -22,7 +22,7 @@
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "Cho phép The Daily dùng vị trí để hiển thị thời tiết địa phương.",
+          "locationWhenInUsePermission": "Cho phép NewsDaily dùng vị trí để hiển thị thời tiết địa phương.",
           "locationAlwaysAndWhenInUsePermission": false,
           "locationAlwaysPermission": false
         }
@@ -36,7 +36,7 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "Cho phép The Daily truy cập ảnh để chọn ảnh đại diện.",
+          "photosPermission": "Cho phép NewsDaily truy cập ảnh để chọn ảnh đại diện.",
           "cameraPermission": false,
           "microphonePermission": false
         }

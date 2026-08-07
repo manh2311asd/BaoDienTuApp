@@ -3,6 +3,7 @@ import { StyleSheet, View, Text, TouchableOpacity, Image } from 'react-native';
 import { C, F_SERIF, F_SANS } from './constants';
 import { useAppStore } from '../../store/useAppStore';
 import { scaleFont, scaleLineHeight } from '../../theme/typography';
+import { appTheme } from '../../theme/colors';
 
 interface RelatedArticlesProps {
   relatedArticles: any[];
@@ -87,10 +88,10 @@ const styles = StyleSheet.create({
   },
   relatedCard: {
     borderWidth: 1,
-    borderColor: '#EAEAEA',
+    borderColor: appTheme.light.appBorder,
     borderRadius: 8,
     padding: 16,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: appTheme.light.appSurface,
     marginBottom: 16,
   },
   relatedCardTitle: {
@@ -104,7 +105,7 @@ const styles = StyleSheet.create({
   relatedCardSapo: {
     fontFamily: F_SANS,
     fontSize: 13,
-    color: '#52525B',
+    color: appTheme.light.appTextSecondary,
     lineHeight: 18,
     marginBottom: 12,
   },

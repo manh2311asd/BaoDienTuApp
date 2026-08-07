@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -11,22 +11,22 @@ import {
   View,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   BookOpen,
   Bookmark,
-  ChevronRight,
   Clock3,
   Compass,
   Download,
   FileText,
-  MoreHorizontal,
+  LogIn,
+  Trash2,
 } from 'lucide-react-native';
 import { Article } from '../../types/content';
 import { localDB } from '../../services/localDB';
 import { useAppStore } from '../../store/useAppStore';
 import { scaleFont, scaleLineHeight } from '../../theme/typography';
-import { apiClient } from '../../services/api/client';
+import { mainShellTheme } from '../../theme/colors';
 
 type LibrarySection = 'saved' | 'downloaded' | 'history';
 
@@ -38,28 +38,47 @@ const F_SERIF = Platform.select({
 const IC = { strokeWidth: 2.2 } as const;
 
 export default function LibraryScreen({ navigation, route }: any) {
+  const insets = useSafeAreaInsets();
   const {
     bookmarkedIds,
     fontSize,
-    getColors,
     offlineIds,
     showImages,
+    themeMode,
     toggleBookmark,
+    user,
   } = useAppStore();
-  const colors = getColors();
+  const shell = mainShellTheme[themeMode];
+  const colors = {
+    background: shell.appBackground,
+    card: shell.appSurface,
+    text: shell.appTextPrimary,
+    textMuted: shell.appTextSecondary,
+    primary: shell.appPrimary,
+    border: shell.appBorder,
+    danger: shell.appError,
+  };
+  const libraryCanvas = shell.appBackground;
+  const libraryHeader = shell.appHeader;
+  const librarySurface = shell.appSurface;
+  const headerMuted = shell.appHeaderTextSecondary;
+  const segmentActiveText = shell.appOnPrimary;
   const [section, setSection] = useState<LibrarySection>('saved');
   const [savedArticles, setSavedArticles] = useState<Partial<Article>[]>([]);
   const [downloadedArticles, setDownloadedArticles] = useState<Partial<Article>[]>([]);
   const [historyArticles, setHistoryArticles] = useState<Partial<Article>[]>([]);
-  const [suggestions, setSuggestions] = useState<Partial<Article>[]>([]);
-  const [loading, setLoading] = useState(true);
+  const hasLoadedRef = useRef(false);
+  const [initialLoading, setInitialLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [backgroundFetching, setBackgroundFetching] = useState(false);
 
   const loadLibrary = useCallback(async (isRefresh = false) => {
     if (isRefresh) {
       setRefreshing(true);
+    } else if (!hasLoadedRef.current) {
+      setInitialLoading(true);
     } else {
-      setLoading(true);
+      setBackgroundFetching(true);
     }
 
     try {
@@ -68,36 +87,18 @@ export default function LibraryScreen({ navigation, route }: any) {
         offlineIds.length > 0
           ? localDB.getOfflineArticles()
           : Promise.resolve([]),
-        localDB.getRecentArticles(),
+        user?.id ? localDB.getRecentArticles() : Promise.resolve([]),
       ]);
       setSavedArticles(saved);
       setDownloadedArticles(downloaded);
       setHistoryArticles(history);
-
-      const currentListLength =
-        section === 'saved'
-          ? saved.length
-          : section === 'downloaded'
-            ? downloaded.length
-            : history.length;
-
-      if (currentListLength <= 2) {
-        const response = await apiClient.searchArticles();
-        if (response.data) {
-          const currentIds = (section === 'saved' ? saved : section === 'downloaded' ? downloaded : history).map(x => x.id);
-          const filtered = response.data.filter(x => !currentIds.includes(x.id)).slice(0, 3);
-          setSuggestions(filtered);
-        }
-      } else {
-        setSuggestions([]);
-      }
-    } catch (e) {
-      console.error(e);
     } finally {
-      setLoading(false);
+      hasLoadedRef.current = true;
+      setInitialLoading(false);
       setRefreshing(false);
+      setBackgroundFetching(false);
     }
-  }, [bookmarkedIds, offlineIds, section]);
+  }, [bookmarkedIds, offlineIds, user?.id]);
 
   useFocusEffect(
     useCallback(() => {
@@ -114,12 +115,21 @@ export default function LibraryScreen({ navigation, route }: any) {
         ? savedArticles
         : section === 'downloaded'
           ? downloadedArticles
-          : historyArticles,
-    [downloadedArticles, historyArticles, savedArticles, section]
+          : user
+            ? historyArticles
+            : [],
+    [downloadedArticles, historyArticles, savedArticles, section, user]
   );
 
   const openArticle = (article: Partial<Article>) => {
     if (!article.id) {
+      return;
+    }
+    if (article.origin === 'EXTERNAL' && article.originalUrl) {
+      navigation.navigate('ArticleWebView', {
+        url: article.originalUrl,
+        title: article.title || 'Điểm báo',
+      });
       return;
     }
     navigation.navigate('ArticleDetail', {
@@ -150,47 +160,11 @@ export default function LibraryScreen({ navigation, route }: any) {
               ? await localDB.deleteArticleOffline(article.id!)
               : await localDB.deleteBookmarkedArticle(article.id!);
 
-            if (removed) {
-              if (!downloaded) {
-                toggleBookmark(article.id!);
-              }
-              loadLibrary();
+            if (removed && !downloaded) {
+              toggleBookmark(article.id!);
             }
           },
         },
-      ]
-    );
-  };
-
-  const getReadingTime = (article: Partial<Article>) => {
-    const text = (article.title || '') + ' ' + (article.sapo || '') + ' ' + (article.content || '');
-    const words = text.trim().split(/\s+/).length;
-    const mins = Math.max(1, Math.round(words / 200));
-    return `${mins} phút đọc`;
-  };
-
-  const formatDate = (dateStr?: string) => {
-    if (!dateStr) return 'Gần đây';
-    const date = new Date(dateStr);
-    return `${date.getDate()}/${date.getMonth() + 1}/${date.getFullYear()}`;
-  };
-
-  const showArticleMenu = (article: Partial<Article>) => {
-    const downloaded = section === 'downloaded';
-    Alert.alert(
-      'Tùy chọn bài viết',
-      article.title || '',
-      [
-        {
-          text: downloaded ? 'Xóa bản tải' : 'Bỏ lưu bài viết',
-          style: 'destructive',
-          onPress: () => removeArticle(article),
-        },
-        {
-          text: 'Đọc bài viết',
-          onPress: () => openArticle(article),
-        },
-        { text: 'Hủy', style: 'cancel' },
       ]
     );
   };
@@ -205,7 +179,14 @@ export default function LibraryScreen({ navigation, route }: any) {
         activeOpacity={0.82}
         style={[
           styles.articleCard,
-          { backgroundColor: colors.card, borderColor: colors.border },
+          {
+            backgroundColor: item.origin === 'EXTERNAL'
+              ? shell.appExternalSurface
+              : downloaded
+                ? shell.appSecondaryContainer
+                : librarySurface,
+            borderColor: colors.border,
+          },
         ]}
         onPress={() => openArticle(item)}
       >
@@ -220,9 +201,9 @@ export default function LibraryScreen({ navigation, route }: any) {
             ]}
           >
             {downloaded ? (
-              <Download color={colors.textMuted} size={22} {...IC} />
+              <Download color={colors.textMuted} size={24} {...IC} />
             ) : (
-              <FileText color={colors.textMuted} size={22} {...IC} />
+              <FileText color={colors.textMuted} size={24} {...IC} />
             )}
           </View>
         )}
@@ -234,87 +215,57 @@ export default function LibraryScreen({ navigation, route }: any) {
               {
                 color: colors.text,
                 fontSize: scaleFont(15, fontSize),
-                lineHeight: scaleLineHeight(21, fontSize),
+                lineHeight: scaleLineHeight(20, fontSize),
               },
             ]}
             numberOfLines={fontSize === 'xlarge' ? 4 : 3}
           >
             {item.title}
           </Text>
-          <Text style={[styles.articleMeta, { color: colors.textMuted }]}>
-            {downloaded
-              ? `Trên thiết bị · ${getReadingTime(item)}`
-              : history
-                ? `Đã đọc · ${getReadingTime(item)}`
-                : `${item.categoryName || 'Tin tức'} · ${formatDate(item.createdAt)} · ${getReadingTime(item)}`}
+          <Text
+            style={[
+              styles.articleMeta,
+              {
+                color: item.origin === 'EXTERNAL'
+                  ? shell.appBlueIcon
+                  : shell.appSecondary,
+                backgroundColor: item.origin === 'EXTERNAL'
+                  ? shell.appBlueContainer
+                  : shell.appSecondaryContainer,
+              },
+            ]}
+          >
+            {item.origin === 'EXTERNAL'
+              ? (item.sourceName || 'NGUỒN NGOÀI').toUpperCase()
+              : downloaded
+                ? 'NEWSDAILY · TRÊN THIẾT BỊ'
+                : history
+                  ? 'NEWSDAILY · ĐÃ ĐỌC GẦN ĐÂY'
+                  : `NEWSDAILY · ${(item.categoryName || 'TIN TỨC').toUpperCase()}`}
           </Text>
           <View style={styles.articleFooter}>
-            <View style={styles.readAction}>
-              <Text style={[styles.readLabel, { color: colors.primary }]}>
-                {downloaded ? 'Đọc bản đã tải' : history ? 'Đọc lại' : 'Đọc bài'}
-              </Text>
-              <ChevronRight color={colors.primary} size={13} strokeWidth={2.5} />
-            </View>
+            <Text style={[styles.readLabel, { color: shell.appPrimary }]}>
+              {item.origin === 'EXTERNAL'
+                ? 'Mở tại nguồn'
+                : downloaded
+                  ? 'Đọc bản đã tải'
+                  : history
+                    ? 'Đọc lại'
+                    : 'Đọc tiếp'}
+            </Text>
             {!history && (
               <TouchableOpacity
                 accessibilityLabel={downloaded ? 'Xóa bài đã tải' : 'Bỏ lưu bài viết'}
-                hitSlop={12}
-                style={styles.moreButton}
-                onPress={() => showArticleMenu(item)}
+                hitSlop={8}
+                style={[styles.deleteButton, { borderColor: colors.border }]}
+                onPress={() => removeArticle(item)}
               >
-                <MoreHorizontal color={colors.textMuted} size={18} {...IC} />
+                <Trash2 color={colors.danger} size={16} {...IC} />
               </TouchableOpacity>
             )}
           </View>
         </View>
       </TouchableOpacity>
-    );
-  };
-
-
-  const renderSuggestions = () => {
-    if (articles.length > 2 || suggestions.length === 0) return null;
-    return (
-      <View style={styles.suggestionsContainer}>
-        <View style={styles.suggestionsHeader}>
-          <Text style={[styles.suggestionsTitle, { color: colors.text }]}>
-            Gợi ý để lưu
-          </Text>
-          <Text style={[styles.suggestionsSubtitle, { color: colors.textMuted }]}>
-            Những bài viết phổ biến có thể bạn quan tâm
-          </Text>
-        </View>
-        {suggestions.map((item) => (
-          <TouchableOpacity
-            key={item.id}
-            style={[
-              styles.suggestionCard,
-              { backgroundColor: colors.card, borderColor: colors.border },
-            ]}
-            onPress={() =>
-              navigation.navigate('ArticleDetail', {
-                articleId: item.id,
-                articleType: item.type,
-              })
-            }
-          >
-            <View style={styles.suggestionContent}>
-              <Text
-                style={[styles.suggestionTitleText, { color: colors.text }]}
-                numberOfLines={2}
-              >
-                {item.title}
-              </Text>
-              <Text style={[styles.suggestionMeta, { color: colors.textMuted }]}>
-                {item.categoryName || 'Tin tức'} · {getReadingTime(item)}
-              </Text>
-            </View>
-            {showImages && item.coverImage && (
-              <Image source={{ uri: item.coverImage }} style={styles.suggestionThumb} />
-            )}
-          </TouchableOpacity>
-        ))}
-      </View>
     );
   };
 
@@ -330,44 +281,63 @@ export default function LibraryScreen({ navigation, route }: any) {
         title: 'Chưa có bài viết đã tải',
         description: 'Tải bài về thiết bị để đọc ngay cả khi không có mạng.',
         }
-      : {
-          icon: <Clock3 color={colors.textMuted} size={42} {...IC} />,
-          title: 'Chưa có lịch sử đọc',
-          description: 'Những bài bạn vừa mở sẽ xuất hiện tại đây.',
-        };
+      : !user
+        ? {
+            icon: <LogIn color={colors.textMuted} size={42} {...IC} />,
+            title: 'Đăng nhập để xem lịch sử',
+            description: 'Lịch sử đọc được lưu riêng cho từng tài khoản.',
+          }
+        : {
+            icon: <Clock3 color={colors.textMuted} size={42} {...IC} />,
+            title: 'Chưa có lịch sử đọc',
+            description: 'Những bài bạn vừa mở sẽ xuất hiện tại đây.',
+          };
+
+  const historyNeedsLogin = section === 'history' && !user;
 
   return (
     <SafeAreaView
       edges={['top']}
-      style={[styles.root, { backgroundColor: colors.background }]}
+      style={[styles.root, { backgroundColor: libraryCanvas }]}
     >
-      <View style={[styles.header, { borderBottomColor: colors.border }]}>
+      <View style={[styles.header, { backgroundColor: libraryHeader, borderBottomColor: colors.border }]}>
         <View style={styles.eyebrowRow}>
-          <BookOpen color={colors.textMuted} size={16} {...IC} />
-          <Text style={[styles.eyebrow, { color: colors.textMuted }]}>
+          <BookOpen color={headerMuted} size={16} {...IC} />
+          <Text style={[styles.eyebrow, { color: headerMuted }]}>
             BỘ SƯU TẬP CỦA BẠN
           </Text>
+          {backgroundFetching && !refreshing && (
+            <ActivityIndicator
+              color={shell.appHeaderTextSecondary}
+              size="small"
+              style={styles.backgroundIndicator}
+            />
+          )}
         </View>
-        <Text style={[styles.heading, { color: colors.text }]}>Thư viện</Text>
-        <Text style={[styles.subheading, { color: colors.textMuted }]}>
+        <Text style={[styles.heading, { color: shell.appHeaderText }]}>Thư viện</Text>
+        <Text style={[styles.subheading, { color: headerMuted }]}>
           Lưu để xem lại hoặc tải xuống để đọc không cần mạng.
         </Text>
 
         <View
           style={[
             styles.segmentedControl,
-            { backgroundColor: colors.card, borderColor: colors.border },
+            { backgroundColor: shell.appHeaderPressed, borderColor: shell.appBorder },
           ]}
         >
           <TouchableOpacity
+            accessibilityRole="tab"
+            accessibilityLabel="Bài đã lưu"
+            accessibilityState={{ selected: section === 'saved' }}
+            hitSlop={{ top: 3, bottom: 3 }}
             style={[
               styles.segment,
-              section === 'saved' && { backgroundColor: colors.text },
+              section === 'saved' && { backgroundColor: shell.appPrimary },
             ]}
             onPress={() => setSection('saved')}
           >
             <Bookmark
-              color={section === 'saved' ? colors.background : colors.textMuted}
+              color={section === 'saved' ? segmentActiveText : headerMuted}
               size={16}
               {...IC}
             />
@@ -376,7 +346,7 @@ export default function LibraryScreen({ navigation, route }: any) {
                 styles.segmentLabel,
                 {
                   color:
-                    section === 'saved' ? colors.background : colors.textMuted,
+                    section === 'saved' ? segmentActiveText : headerMuted,
                 },
               ]}
             >
@@ -387,7 +357,7 @@ export default function LibraryScreen({ navigation, route }: any) {
                 styles.segmentCount,
                 {
                   color:
-                    section === 'saved' ? colors.background : colors.textMuted,
+                    section === 'saved' ? segmentActiveText : headerMuted,
                 },
               ]}
             >
@@ -396,15 +366,19 @@ export default function LibraryScreen({ navigation, route }: any) {
           </TouchableOpacity>
 
           <TouchableOpacity
+            accessibilityRole="tab"
+            accessibilityLabel="Bài đã tải"
+            accessibilityState={{ selected: section === 'downloaded' }}
+            hitSlop={{ top: 3, bottom: 3 }}
             style={[
               styles.segment,
-              section === 'downloaded' && { backgroundColor: colors.text },
+              section === 'downloaded' && { backgroundColor: shell.appPrimary },
             ]}
             onPress={() => setSection('downloaded')}
           >
             <Download
               color={
-                section === 'downloaded' ? colors.background : colors.textMuted
+                section === 'downloaded' ? segmentActiveText : headerMuted
               }
               size={16}
               {...IC}
@@ -415,8 +389,8 @@ export default function LibraryScreen({ navigation, route }: any) {
                 {
                   color:
                     section === 'downloaded'
-                      ? colors.background
-                      : colors.textMuted,
+                      ? segmentActiveText
+                      : headerMuted,
                 },
               ]}
             >
@@ -428,8 +402,8 @@ export default function LibraryScreen({ navigation, route }: any) {
                 {
                   color:
                     section === 'downloaded'
-                      ? colors.background
-                      : colors.textMuted,
+                      ? segmentActiveText
+                      : headerMuted,
                 },
               ]}
             >
@@ -438,14 +412,18 @@ export default function LibraryScreen({ navigation, route }: any) {
           </TouchableOpacity>
 
           <TouchableOpacity
+            accessibilityRole="tab"
+            accessibilityLabel="Lịch sử đọc"
+            accessibilityState={{ selected: section === 'history' }}
+            hitSlop={{ top: 3, bottom: 3 }}
             style={[
               styles.segment,
-              section === 'history' && { backgroundColor: colors.text },
+              section === 'history' && { backgroundColor: shell.appPrimary },
             ]}
             onPress={() => setSection('history')}
           >
             <Clock3
-              color={section === 'history' ? colors.background : colors.textMuted}
+              color={section === 'history' ? segmentActiveText : headerMuted}
               size={16}
               {...IC}
             />
@@ -455,55 +433,58 @@ export default function LibraryScreen({ navigation, route }: any) {
                 {
                   color:
                     section === 'history'
-                      ? colors.background
-                      : colors.textMuted,
+                      ? segmentActiveText
+                      : headerMuted,
                 },
               ]}
             >
               Lịch sử
             </Text>
-            <Text
-              style={[
-                styles.segmentCount,
-                {
-                  color:
-                    section === 'history'
-                      ? colors.background
-                      : colors.textMuted,
-                },
-              ]}
-            >
-              {historyArticles.length}
-            </Text>
           </TouchableOpacity>
         </View>
       </View>
 
-      {loading ? (
+      {initialLoading && articles.length === 0 ? (
         <View style={styles.center}>
           <ActivityIndicator color={colors.primary} />
+        </View>
+      ) : articles.length === 0 ? (
+        <View style={styles.center}>
+          {emptyCopy.icon}
+          <Text style={[styles.emptyTitle, { color: colors.text }]}>
+            {emptyCopy.title}
+          </Text>
+          <Text style={[styles.emptyDescription, { color: colors.textMuted }]}>
+            {emptyCopy.description}
+          </Text>
+          <TouchableOpacity
+            style={[styles.exploreButton, { backgroundColor: shell.appPrimary }]}
+            onPress={() =>
+              navigation.navigate(historyNeedsLogin ? 'ProfileTab' : 'HomeTab')
+            }
+          >
+            {historyNeedsLogin ? (
+              <LogIn color={shell.appOnPrimary} size={16} {...IC} />
+            ) : (
+              <Compass color={shell.appOnPrimary} size={16} {...IC} />
+            )}
+            <Text style={[styles.exploreLabel, { color: shell.appOnPrimary }]}>
+              {historyNeedsLogin ? 'Đăng nhập' : 'Khám phá bài viết'}
+            </Text>
+          </TouchableOpacity>
         </View>
       ) : (
         <FlatList
           data={articles}
           renderItem={renderArticle}
           keyExtractor={(item) => String(item.id)}
-          contentContainerStyle={styles.list}
+          contentContainerStyle={[
+            styles.list,
+            { paddingBottom: 78 + insets.bottom },
+          ]}
           refreshing={refreshing}
           onRefresh={() => loadLibrary(true)}
           showsVerticalScrollIndicator={false}
-          ListEmptyComponent={() => (
-            <View style={[styles.center, { paddingBottom: 16 }]}>
-              {emptyCopy.icon}
-              <Text style={[styles.emptyTitle, { color: colors.text }]}>
-                {emptyCopy.title}
-              </Text>
-              <Text style={[styles.emptyDescription, { color: colors.textMuted }]}>
-                {emptyCopy.description}
-              </Text>
-            </View>
-          )}
-          ListFooterComponent={renderSuggestions}
         />
       )}
     </SafeAreaView>
@@ -515,14 +496,17 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   header: {
-    paddingHorizontal: 20,
-    paddingTop: 14,
-    paddingBottom: 18,
+    paddingHorizontal: 18,
+    paddingTop: 12,
+    paddingBottom: 14,
     borderBottomWidth: 1,
   },
   eyebrowRow: {
     flexDirection: 'row',
     alignItems: 'center',
+  },
+  backgroundIndicator: {
+    marginLeft: 'auto',
   },
   eyebrow: {
     marginLeft: 7,
@@ -531,7 +515,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0.8,
   },
   heading: {
-    marginTop: 8,
+    marginTop: 5,
     fontFamily: F_SERIF,
     fontSize: 30,
     fontWeight: '700',
@@ -543,7 +527,7 @@ const styles = StyleSheet.create({
     lineHeight: 19,
   },
   segmentedControl: {
-    marginTop: 18,
+    marginTop: 13,
     padding: 3,
     flexDirection: 'row',
     borderWidth: 1,
@@ -551,7 +535,7 @@ const styles = StyleSheet.create({
   },
   segment: {
     flex: 1,
-    minHeight: 42,
+    minHeight: 39,
     paddingHorizontal: 12,
     flexDirection: 'row',
     alignItems: 'center',
@@ -603,18 +587,18 @@ const styles = StyleSheet.create({
   },
   list: {
     padding: 16,
-    paddingBottom: 100,
+    paddingBottom: 54,
   },
   articleCard: {
     marginBottom: 12,
-    padding: 14,
+    padding: 12,
     flexDirection: 'row',
     borderWidth: 1,
     borderRadius: 10,
   },
   thumbnail: {
-    width: 100,
-    height: 110,
+    width: 92,
+    height: 104,
     borderRadius: 6,
   },
   thumbnailPlaceholder: {
@@ -623,20 +607,24 @@ const styles = StyleSheet.create({
   },
   articleCopy: {
     flex: 1,
-    minHeight: 110,
-    marginLeft: 14,
+    minHeight: 104,
+    marginLeft: 12,
   },
   articleTitle: {
     fontFamily: F_SERIF,
-    fontSize: 16,
-    lineHeight: 22,
+    fontSize: 15,
+    lineHeight: 20,
     fontWeight: '700',
   },
   articleMeta: {
-    marginTop: 5,
-    fontSize: 11,
-    fontWeight: '500',
-    letterSpacing: 0,
+    alignSelf: 'flex-start',
+    marginTop: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    borderRadius: 4,
+    fontSize: 9,
+    fontWeight: '700',
+    letterSpacing: 0.6,
   },
   articleFooter: {
     flex: 1,
@@ -647,19 +635,9 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   readLabel: {
+    paddingBottom: 7,
     fontSize: 12,
-    fontWeight: '600',
-  },
-  readAction: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingBottom: 4,
-  },
-  moreButton: {
-    width: 36,
-    height: 36,
-    alignItems: 'center',
-    justifyContent: 'center',
+    fontWeight: '700',
   },
   deleteButton: {
     width: 34,
@@ -668,51 +646,5 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderWidth: 1,
     borderRadius: 5,
-  },
-  suggestionsContainer: {
-    marginTop: 24,
-    paddingTop: 20,
-    borderTopWidth: 1,
-    borderTopColor: '#EAEAEA',
-  },
-  suggestionsHeader: {
-    marginBottom: 14,
-    paddingHorizontal: 4,
-  },
-  suggestionsTitle: {
-    fontFamily: F_SERIF,
-    fontSize: 18,
-    fontWeight: '700',
-  },
-  suggestionsSubtitle: {
-    fontSize: 12,
-    marginTop: 2,
-  },
-  suggestionCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 12,
-    borderWidth: 1,
-    borderRadius: 8,
-    marginBottom: 10,
-  },
-  suggestionContent: {
-    flex: 1,
-    marginRight: 10,
-  },
-  suggestionTitleText: {
-    fontFamily: F_SERIF,
-    fontSize: 14,
-    fontWeight: '700',
-    lineHeight: 18,
-  },
-  suggestionMeta: {
-    fontSize: 11,
-    marginTop: 4,
-  },
-  suggestionThumb: {
-    width: 60,
-    height: 60,
-    borderRadius: 4,
   },
 });
