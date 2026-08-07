@@ -11,6 +11,7 @@ import {
   Animated,
   Linking,
   Platform,
+  Keyboard,
 } from 'react-native';
 import RenderHtml from 'react-native-render-html';
 import { useAppStore } from '../../store/useAppStore';
@@ -20,6 +21,7 @@ import { localDB } from '../../services/localDB';
 import { Article, Comment } from '../../types/content';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Speech from 'expo-speech';
+import * as Network from 'expo-network';
 import { useToast } from '../../components/Toast/ToastContext';
 
 // Import direct modular components
@@ -32,6 +34,11 @@ import DetailBottomBar from './DetailBottomBar';
 import { C, F_SERIF, F_SANS } from './constants';
 import AppActionSheet from '../../components/Feedback/AppActionSheet';
 import { scaleFont, scaleLineHeight } from '../../theme/typography';
+import { appTheme } from '../../theme/colors';
+import {
+  getArticleFontFamily,
+  getArticleTextMetrics,
+} from '../Settings/readingSettingsUi';
 import {
   buildSpeechParagraphs,
   estimateSpeechMinutes,
@@ -42,13 +49,19 @@ export default function ArticleDetailScreen({ route, navigation }: any) {
   const { width } = useWindowDimensions();
   const {
     bookmarkedIds,
+    articleFontFamily,
+    articleFontSize,
+    articleLineHeight,
     fontSize,
     getColors,
     showImages,
+    themeMode,
     toggleBookmark,
     user,
+    wifiOnlyDownloads,
   } = useAppStore();
   const colors = getColors();
+  const shell = appTheme[themeMode];
   const insets = useSafeAreaInsets();
   const { showToast } = useToast();
 
@@ -75,15 +88,6 @@ export default function ArticleDetailScreen({ route, navigation }: any) {
   const [playbackSpeed, setPlaybackSpeed] = useState<0.9 | 1 | 1.25>(0.9);
   const [speechParagraphIndex, setSpeechParagraphIndex] = useState(0);
   const speechSessionRef = React.useRef(0);
-  const scrollProgressRef = React.useRef(0);
-
-  React.useEffect(() => {
-    return () => {
-      if (scrollProgressRef.current > 0) {
-        localDB.saveReadingProgress(articleId, scrollProgressRef.current);
-      }
-    };
-  }, [articleId]);
 
   const speechParagraphs = React.useMemo(
     () =>
@@ -108,6 +112,24 @@ export default function ArticleDetailScreen({ route, navigation }: any) {
   const headerVisible = React.useRef(true);
 
   const isBookmarked = bookmarkedIds.includes(articleId);
+
+  const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
+
+  useEffect(() => {
+    const showSubscription = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
+      () => setIsKeyboardVisible(true)
+    );
+    const hideSubscription = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
+      () => setIsKeyboardVisible(false)
+    );
+
+    return () => {
+      showSubscription.remove();
+      hideSubscription.remove();
+    };
+  }, []);
 
   useEffect(() => {
     localDB.isArticleOffline(articleId).then(setIsSavedOffline);
@@ -338,6 +360,19 @@ export default function ArticleDetailScreen({ route, navigation }: any) {
       return;
     }
 
+    if (wifiOnlyDownloads) {
+      try {
+        const networkState = await Network.getNetworkStateAsync();
+        if (networkState.type !== Network.NetworkStateType.WIFI) {
+          showToast('Hãy kết nối Wi-Fi để tải bài offline');
+          return;
+        }
+      } catch {
+        showToast('Chưa thể kiểm tra kết nối mạng');
+        return;
+      }
+    }
+
     const saved = await localDB.saveArticleOffline(article as Article);
     if (saved) {
       setIsSavedOffline(true);
@@ -370,7 +405,7 @@ export default function ArticleDetailScreen({ route, navigation }: any) {
     try {
       await Share.share({
         title: article.title,
-        message: `${article.title}\n\nĐọc bài viết đầy đủ tại The Daily:\n${article.sapo}`,
+        message: `${article.title}\n\nĐọc bài viết đầy đủ tại NewsDaily:\n${article.sapo}`,
       });
     } catch (e) {
       console.error('Error sharing:', e);
@@ -389,15 +424,21 @@ export default function ArticleDetailScreen({ route, navigation }: any) {
   const fetchRelatedArticles = useCallback(async () => {
     try {
       const catId = article?.categoryId;
-      const res = await apiClient.searchArticles(undefined, catId || undefined);
-      const filtered = (res.data || [])
-        .filter((item) => item.id !== articleId)
+      const res = await apiClient.searchArticles({
+        categoryId: catId || undefined,
+        origin: article?.origin || 'INTERNAL'
+      });
+      const dataList: Article[] = res.data && 'content' in res.data
+        ? (res.data as { content: Article[] }).content
+        : res.data;
+      const filtered = (dataList || [])
+        .filter((item: Article) => item.id !== articleId)
         .slice(0, 3);
       setRelatedArticles(filtered);
     } catch (err) {
       console.error('Lỗi tải tin liên quan:', err);
     }
-  }, [article?.categoryId, articleId]);
+  }, [article?.categoryId, article?.origin, articleId]);
 
   useEffect(() => {
     fetchArticleDetail();
@@ -447,9 +488,7 @@ export default function ArticleDetailScreen({ route, navigation }: any) {
     const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
     const total = contentSize.height - layoutMeasurement.height;
     if (total > 0) {
-      const p = Math.max(0, Math.min(1, contentOffset.y / total));
-      setScrollProgress(p);
-      scrollProgressRef.current = p;
+      setScrollProgress(Math.max(0, Math.min(1, contentOffset.y / total)));
     }
 
     const currentY = contentOffset.y;
@@ -512,24 +551,38 @@ export default function ArticleDetailScreen({ route, navigation }: any) {
     extrapolate: 'clamp',
   });
 
-  const bodyFontSize = scaleFont(17, fontSize);
-  const bodyLineHeight = scaleLineHeight(28, fontSize);
+  const bodyMetrics = getArticleTextMetrics(
+    17,
+    27,
+    articleFontSize,
+    articleLineHeight
+  );
+  const sapoMetrics = getArticleTextMetrics(
+    16,
+    24,
+    articleFontSize,
+    articleLineHeight
+  );
+  const articleFont = getArticleFontFamily(articleFontFamily);
+  const bodyFontSize = bodyMetrics.fontSize;
+  const bodyLineHeight = bodyMetrics.lineHeight;
 
   const tagsStyles = {
     p: {
-      fontFamily: F_SANS,
+      fontFamily: articleFont,
       color: colors.text,
       fontSize: bodyFontSize,
       lineHeight: bodyLineHeight,
       marginBottom: 16,
     },
     ol: {
+      fontFamily: articleFont,
       color: colors.text,
       fontSize: bodyFontSize,
       marginBottom: 16,
     },
     li: {
-      fontFamily: F_SANS,
+      fontFamily: articleFont,
       fontSize: bodyFontSize,
       lineHeight: bodyLineHeight,
       marginBottom: 12,
@@ -571,7 +624,7 @@ export default function ArticleDetailScreen({ route, navigation }: any) {
   };
 
   return (
-    <View style={[styles.root, { backgroundColor: colors.background }]}>
+    <View style={[styles.root, { backgroundColor: shell.appReadingBackground }]}>
       {/* Header bar (Notch safe & Sticky) */}
       <DetailHeader
         article={article}
@@ -699,8 +752,9 @@ export default function ArticleDetailScreen({ route, navigation }: any) {
                 styles.sapo,
                 {
                   color: colors.textMuted,
-                  fontSize: scaleFont(16, fontSize),
-                  lineHeight: scaleLineHeight(24, fontSize),
+                  fontFamily: articleFont,
+                  fontSize: sapoMetrics.fontSize,
+                  lineHeight: sapoMetrics.lineHeight,
                 },
               ]}
             >
@@ -716,7 +770,7 @@ export default function ArticleDetailScreen({ route, navigation }: any) {
             source={{ html: article.content || article.previewContent || '' }}
             baseStyle={{
               color: colors.text,
-              fontFamily: F_SANS,
+              fontFamily: articleFont,
               fontSize: bodyFontSize,
               lineHeight: bodyLineHeight,
             }}
@@ -762,16 +816,8 @@ export default function ArticleDetailScreen({ route, navigation }: any) {
           )}
 
           {article.paywallRequired && (
-            <View
-              style={[
-                styles.paywallCard,
-                {
-                  backgroundColor: colors.card,
-                  borderColor: colors.border,
-                },
-              ]}
-            >
-              <Text style={[styles.paywallEyebrow, { color: colors.primary }]}>NỘI DUNG DÀNH CHO VIP</Text>
+            <View style={styles.paywallCard}>
+              <Text style={styles.paywallEyebrow}>NỘI DUNG DÀNH CHO VIP</Text>
               <Text style={[styles.paywallTitle, { color: colors.text }]}>
                 {paywallTitle}
               </Text>
@@ -821,23 +867,25 @@ export default function ArticleDetailScreen({ route, navigation }: any) {
       </ScrollView>
 
       {/* Fixed Bottom Utility Toolbar: Normal & Active TTS Mode */}
-      <DetailBottomBar
-        navigation={navigation}
-        isPlayingAudio={isPlayingAudio}
-        isSpeechPaused={isSpeechPaused}
-        toggleSpeechPlayback={toggleSpeechPlayback}
-        stopSpeechPlayback={stopSpeechPlayback}
-        isBookmarked={isBookmarked}
-        toggleBookmark={handleToggleBookmark}
-        handleShare={handleShare}
-        playbackSpeed={playbackSpeed}
-        handleSpeedChange={handleSpeedChange}
-        speechParagraphIndex={speechParagraphIndex}
-        speechParagraphCount={speechParagraphs.length}
-        insets={insets}
-        isSavedOffline={isSavedOffline}
-        handleToggleOffline={handleToggleOffline}
-      />
+      {!isKeyboardVisible && (
+        <DetailBottomBar
+          navigation={navigation}
+          isPlayingAudio={isPlayingAudio}
+          isSpeechPaused={isSpeechPaused}
+          toggleSpeechPlayback={toggleSpeechPlayback}
+          stopSpeechPlayback={stopSpeechPlayback}
+          isBookmarked={isBookmarked}
+          toggleBookmark={handleToggleBookmark}
+          handleShare={handleShare}
+          playbackSpeed={playbackSpeed}
+          handleSpeedChange={handleSpeedChange}
+          speechParagraphIndex={speechParagraphIndex}
+          speechParagraphCount={speechParagraphs.length}
+          insets={insets}
+          isSavedOffline={isSavedOffline}
+          handleToggleOffline={handleToggleOffline}
+        />
+      )}
 
       <AppActionSheet
         visible={showVipConfirmation}
@@ -913,7 +961,7 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: '#F0EFED',
+    backgroundColor: appTheme.light.appSurfaceMuted,
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 8,
@@ -971,40 +1019,40 @@ const styles = StyleSheet.create({
   },
   thinDivider: {
     height: 1,
-    backgroundColor: '#EAEAEA',
+    backgroundColor: appTheme.light.appBorder,
     marginVertical: 14,
   },
   title: {
     fontFamily: F_SERIF,
-    fontSize: 28,
+    fontSize: 24,
     fontWeight: '700',
     color: C.ink,
-    lineHeight: 36,
-    marginBottom: 14,
+    lineHeight: 32,
+    marginBottom: 12,
   },
   titleSmall: {
-    fontSize: 25,
-    lineHeight: 33,
+    fontSize: 22,
+    lineHeight: 29,
   },
   titleLarge: {
-    fontSize: 32,
-    lineHeight: 41,
+    fontSize: 28,
+    lineHeight: 36,
   },
   sapo: {
     fontFamily: F_SERIF,
-    fontSize: 18,
-    color: '#333333',
-    lineHeight: 28,
+    fontSize: 16,
+    color: appTheme.light.appTextPrimary,
+    lineHeight: 24,
     fontStyle: 'italic',
-    marginBottom: 22,
+    marginBottom: 20,
   },
   sapoSmall: {
-    fontSize: 16,
-    lineHeight: 25,
+    fontSize: 15,
+    lineHeight: 22,
   },
   sapoLarge: {
-    fontSize: 21,
-    lineHeight: 32,
+    fontSize: 19,
+    lineHeight: 28,
   },
   divider: {
     height: 1,
@@ -1045,10 +1093,12 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     padding: 18,
     borderWidth: 1,
-    borderRadius: 10,
+    borderColor: appTheme.light.appBorder,
+    borderRadius: 8,
+    backgroundColor: appTheme.light.appYellowContainer,
   },
   paywallEyebrow: {
-    color: '#956400',
+    color: appTheme.light.appWarning,
     fontSize: 9,
     fontWeight: '800',
     letterSpacing: 0.8,
@@ -1099,7 +1149,7 @@ const styles = StyleSheet.create({
   retryBtnText: {
     fontFamily: F_SANS,
     fontSize: 14,
-    color: '#FFFFFF',
+    color: appTheme.light.appHeaderText,
     fontWeight: '700',
   },
   modalOverlay: {
@@ -1160,7 +1210,7 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     borderWidth: 1,
     borderColor: C.border,
-    backgroundColor: '#F0EFED',
+    backgroundColor: appTheme.light.appSurfaceMuted,
     alignItems: 'center',
   },
   modalCancelBtnText: {
