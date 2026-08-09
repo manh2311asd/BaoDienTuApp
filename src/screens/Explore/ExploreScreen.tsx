@@ -300,7 +300,7 @@ const PointNewsShortcut = memo(function PointNewsShortcut({
             numberOfLines={1}
           >
             {count > 0
-              ? `${count} nguồn tin được chọn lọc`
+              ? '5 nguồn tin được chọn lọc'
               : 'Tin nổi bật từ các nguồn uy tín'}
           </Text>
         </View>

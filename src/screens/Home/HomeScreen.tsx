@@ -51,6 +51,89 @@ let homeNotificationCache: {
 const HOME_ARTICLE_CACHE_KEY = '@BaoDienTu:home_articles_v3';
 const HOME_CATEGORY_CACHE_KEY = '@BaoDienTu:home_categories_v3';
 
+const formatDate = (dateStr?: string) => {
+  if (!dateStr) return 'Gần đây';
+  const date = new Date(dateStr);
+  const d = String(date.getDate()).padStart(2, '0');
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const y = date.getFullYear();
+  return `${d}/${m}/${y}`;
+};
+
+const CompactArticleCard = React.memo(({
+  item,
+  onPress,
+  showImages,
+  fontSize,
+  homeSurface,
+  colors,
+  shell,
+  formatDate,
+}: {
+  item: Article;
+  onPress: (item: Article) => void;
+  showImages: boolean;
+  fontSize: 'small' | 'medium' | 'large' | 'xlarge';
+  homeSurface: string;
+  colors: any;
+  shell: any;
+  formatDate: (d: string) => string;
+}) => {
+  return (
+    <TouchableOpacity
+      style={[
+        styles.compactCard,
+        { backgroundColor: homeSurface, borderColor: colors.border },
+      ]}
+      onPress={() => onPress(item)}
+      activeOpacity={0.8}
+    >
+      <View style={styles.compactTextContainer}>
+        {item.type === 'VIP' && (
+          <View style={[styles.vipBadge, { marginBottom: 4, backgroundColor: shell.appYellowContainer }]}>
+            <Text style={[styles.vipText, { color: shell.appWarning }]}>VIP</Text>
+          </View>
+        )}
+        <Text
+          style={[
+            styles.compactTitle,
+            {
+              color: colors.text,
+              fontSize: scaleFont(17, fontSize),
+              lineHeight: scaleLineHeight(22, fontSize),
+            },
+          ]}
+          allowFontScaling
+          numberOfLines={fontSize === 'xlarge' ? 3 : 2}
+        >
+          {item.title}
+        </Text>
+        <View style={styles.metaRow}>
+          {item.origin === 'EXTERNAL' && item.sourceName && (
+            <View style={[styles.sourceBadge, { backgroundColor: shell.appSecondaryContainer }]}>
+              <Text style={[styles.sourceText, { color: shell.appSecondary }]}>{item.sourceName}</Text>
+            </View>
+          )}
+          <Text style={[styles.metaLabel, { color: shell.appPrimary }]}>{item.categoryName || 'Tin tức'}</Text>
+          <Text style={[styles.metaDot, { color: colors.border }]}>·</Text>
+          <Text style={[styles.metaLabel, { color: colors.textMuted }]}>{formatDate(item.createdAt)}</Text>
+        </View>
+      </View>
+      {showImages && item.coverImage ? (
+        <Image source={{ uri: item.coverImage }} style={styles.compactThumb} />
+      ) : (
+        <View
+          style={[
+            styles.compactThumb,
+            styles.imagePlaceholder,
+            { backgroundColor: colors.border },
+          ]}
+        />
+      )}
+    </TouchableOpacity>
+  );
+});
+
 export default function HomeScreen({ navigation }: any) {
   const insets = useSafeAreaInsets();
   const { fontSize, showImages, themeMode, user } = useAppStore();
@@ -85,6 +168,7 @@ export default function HomeScreen({ navigation }: any) {
   const [loadingMore, setLoadingMore] = useState(false);
   const hasLoadedOnceRef = useRef(false);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const refreshInFlightRef = useRef(false);
   const categoryScrollRef = useRef<ScrollView>(null);
   const chipLayoutsRef = useRef<{[key: string]: {x: number, width: number}}>({});
 
@@ -188,16 +272,25 @@ export default function HomeScreen({ navigation }: any) {
       .getCategories()
       .then((response) => {
         const nextCategories = response.data || [];
-        setCategories(nextCategories);
-        AsyncStorage.setItem(
-          HOME_CATEGORY_CACHE_KEY,
-          JSON.stringify({ savedAt: Date.now(), data: nextCategories })
-        ).catch(() => undefined);
+        if (nextCategories.length > 0) {
+          setCategories(nextCategories);
+          AsyncStorage.setItem(
+            HOME_CATEGORY_CACHE_KEY,
+            JSON.stringify({ savedAt: Date.now(), data: nextCategories })
+          ).catch(() => undefined);
+        }
       })
-      .catch(() => setCategories([]));
+      .catch(() => {
+        // Keep cached categories if network/server is unavailable
+      });
   }, []);
 
   const fetchArticles = useCallback(async (isRefresh = false, targetPage = 0) => {
+    if (isRefresh) {
+      if (refreshInFlightRef.current) return;
+      refreshInFlightRef.current = true;
+    }
+
     const currentRequestId = ++requestId.current;
 
     if (abortControllerRef.current) {
@@ -278,6 +371,9 @@ export default function HomeScreen({ navigation }: any) {
         setBackgroundFetching(false);
         setLoadingMore(false);
       }
+      if (isRefresh) {
+        refreshInFlightRef.current = false;
+      }
     }
   }, [debouncedQuery, selectedCatId]);
 
@@ -307,21 +403,23 @@ export default function HomeScreen({ navigation }: any) {
   }, [articles, categories, debouncedQuery, navigation, selectedCatId]);
 
   const handleRefresh = () => {
-    if (refreshing) return;
+    if (refreshInFlightRef.current) return;
     fetchArticles(true, 0);
-    if (categories.length === 0) {
-      apiClient
-        .getCategories()
-        .then((response) => {
-          const nextCategories = response.data || [];
+    apiClient
+      .getCategories()
+      .then((response) => {
+        const nextCategories = response.data || [];
+        if (nextCategories.length > 0) {
           setCategories(nextCategories);
           AsyncStorage.setItem(
             HOME_CATEGORY_CACHE_KEY,
             JSON.stringify({ savedAt: Date.now(), data: nextCategories })
           ).catch(() => undefined);
-        })
-        .catch(() => setCategories([]));
-    }
+        }
+      })
+      .catch(() => {
+        // Keep cached categories if network/server is down
+      });
   };
 
   const handleLoadMore = () => {
@@ -330,15 +428,32 @@ export default function HomeScreen({ navigation }: any) {
     }
   };
 
-  // Format date helper
-  const formatDate = (dateStr?: string) => {
-    if (!dateStr) return 'Gần đây';
-    const date = new Date(dateStr);
-    const d = String(date.getDate()).padStart(2, '0');
-    const m = String(date.getMonth() + 1).padStart(2, '0');
-    const y = date.getFullYear();
-    return `${d}/${m}/${y}`;
-  };
+  const handleArticlePress = useCallback((item: Article) => {
+    if (item.origin === 'EXTERNAL') {
+      navigation.navigate('ArticleWebView', {
+        url: item.originalUrl,
+        title: item.title,
+      });
+    } else {
+      navigation.navigate('ArticleDetail', {
+        articleId: item.id,
+        articleType: item.type,
+      });
+    }
+  }, [navigation]);
+
+  const renderItem = useCallback(({ item }: { item: Article }) => (
+    <CompactArticleCard
+      item={item}
+      onPress={handleArticlePress}
+      showImages={showImages}
+      fontSize={fontSize}
+      homeSurface={homeSurface}
+      colors={colors}
+      shell={shell}
+      formatDate={formatDate}
+    />
+  ), [handleArticlePress, showImages, fontSize, homeSurface, colors, shell]);
 
   // Render Skeleton Placeholders
   const renderSkeleton = () => {
@@ -733,71 +848,7 @@ export default function HomeScreen({ navigation }: any) {
           );
         }}
         ListHeaderComponent={listHeaderElement}
-        renderItem={({ item }) => (
-          <TouchableOpacity
-            style={[
-              styles.compactCard,
-              { backgroundColor: homeSurface, borderColor: colors.border },
-            ]}
-            onPress={() => {
-              if (item.origin === 'EXTERNAL') {
-                navigation.navigate('ArticleWebView', {
-                  url: item.originalUrl,
-                  title: item.title,
-                });
-              } else {
-                navigation.navigate('ArticleDetail', {
-                  articleId: item.id,
-                  articleType: item.type,
-                });
-              }
-            }}
-            activeOpacity={0.8}
-          >
-            <View style={styles.compactTextContainer}>
-              {item.type === 'VIP' && (
-                <View style={[styles.vipBadge, { marginBottom: 4, backgroundColor: shell.appYellowContainer }]}>
-                  <Text style={[styles.vipText, { color: shell.appWarning }]}>VIP</Text>
-                </View>
-              )}
-              <Text
-                style={[
-                  styles.compactTitle,
-                  {
-                    color: colors.text,
-                    fontSize: scaleFont(17, fontSize),
-                    lineHeight: scaleLineHeight(22, fontSize),
-                  },
-                ]}
-                allowFontScaling
-                numberOfLines={fontSize === 'xlarge' ? 3 : 2}
-              >
-                {item.title}
-              </Text>
-              <View style={styles.metaRow}>
-                {item.origin === 'EXTERNAL' && item.sourceName && (
-                  <View style={[styles.sourceBadge, { backgroundColor: shell.appSecondaryContainer }]}>
-                    <Text style={[styles.sourceText, { color: shell.appSecondary }]}>{item.sourceName}</Text>
-                  </View>
-                )}
-                <Text style={[styles.metaLabel, { color: shell.appPrimary }]}>{item.categoryName || 'Tin tức'}</Text>
-                <Text style={[styles.metaDot, { color: colors.border }]}>·</Text>
-                <Text style={[styles.metaLabel, { color: colors.textMuted }]}>{formatDate(item.createdAt)}</Text>
-              </View>
-            </View>
-            {showImages && item.coverImage ? (
-              <Image source={{ uri: item.coverImage }} style={styles.compactThumb} />
-            ) : (
-              <View
-                style={[
-                  styles.compactThumb,
-                  styles.imagePlaceholder,
-                  { backgroundColor: colors.border },
-                ]}
-              />
-            )}
-          </TouchableOpacity>
-        )}
+        renderItem={renderItem}
       />
     </SafeAreaView>
   );

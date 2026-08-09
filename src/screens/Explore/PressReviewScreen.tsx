@@ -11,7 +11,9 @@ import {
   ActivityIndicator,
   SafeAreaView,
   ScrollView,
+  BackHandler,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   ArrowLeft,
   Search,
@@ -51,6 +53,10 @@ const CATEGORIES = [
   'Bất động sản',
 ];
 
+const getCacheKey = (source: string, sort: string, topic: string | null, query: string) => {
+  return `@NewsDaily:press_review:v1:${source}:${sort}:${topic || ''}:${query}`;
+};
+
 export default function PressReviewScreen({ navigation }: any) {
   const { fontSize, themeMode, bookmarkedIds, toggleBookmark } = useAppStore();
   const theme = getPageTheme('pressReview', themeMode);
@@ -66,6 +72,7 @@ export default function PressReviewScreen({ navigation }: any) {
 
   // Refs for request cancellation
   const abortControllerRef = useRef<AbortController | null>(null);
+  const refreshInFlightRef = useRef(false);
   const requestId = useRef(0);
 
   // Filters
@@ -75,6 +82,19 @@ export default function PressReviewScreen({ navigation }: any) {
   const [sortTab, setSortTab] = useState<'latest' | 'popular' | 'topic'>('latest');
   const [selectedTopic, setSelectedTopic] = useState<string | null>(null);
   const [showTopicPicker, setShowTopicPicker] = useState(false);
+
+  const scrollRef = useRef<ScrollView>(null);
+  const chipLayouts = useRef<Record<string, { x: number; width: number }>>({});
+
+  useEffect(() => {
+    const layout = chipLayouts.current[selectedSource];
+    if (layout) {
+      scrollRef.current?.scrollTo({
+        x: Math.max(0, layout.x - 80),
+        animated: true,
+      });
+    }
+  }, [selectedSource]);
 
   // Split Articles into Hero (1st) and Compact (rest)
   const { heroArticle, listArticles } = useMemo(() => {
@@ -91,6 +111,11 @@ export default function PressReviewScreen({ navigation }: any) {
 
   const fetchPressArticles = useCallback(
     async (isRefresh = false) => {
+      if (isRefresh) {
+        if (refreshInFlightRef.current) return;
+        refreshInFlightRef.current = true;
+      }
+
       const currentRequestId = ++requestId.current;
 
       if (abortControllerRef.current) {
@@ -99,11 +124,32 @@ export default function PressReviewScreen({ navigation }: any) {
       const controller = new AbortController();
       abortControllerRef.current = controller;
 
+      const cacheKey = getCacheKey(selectedSource, sortTab, selectedTopic, debouncedQuery);
+
       if (isRefresh) {
         setRefreshing(true);
         setPage(0);
       } else {
-        setLoading(true);
+        // Hydrate from cache first
+        try {
+          const cachedDataRaw = await AsyncStorage.getItem(cacheKey);
+          if (cachedDataRaw && currentRequestId === requestId.current) {
+            const parsed = JSON.parse(cachedDataRaw);
+            if (parsed && Array.isArray(parsed.data) && parsed.data.length > 0) {
+              setArticles(parsed.data);
+              setLoading(false);
+            } else {
+              setArticles([]);
+              setLoading(true);
+            }
+          } else {
+            setArticles([]);
+            setLoading(true);
+          }
+        } catch {
+          setArticles([]);
+          setLoading(true);
+        }
       }
       setError(null);
 
@@ -121,8 +167,6 @@ export default function PressReviewScreen({ navigation }: any) {
           queryParams.sourceName = selectedSource;
         }
         if (sortTab === 'topic' && selectedTopic) {
-          // If a topic is selected, fetch by matching categories
-          // We can map Vietnamese topic names to category search
           queryParams.keyword = selectedTopic;
         }
 
@@ -132,29 +176,40 @@ export default function PressReviewScreen({ navigation }: any) {
         if (currentRequestId !== requestId.current) return;
         const responseData = response.data;
 
+        let newArticles: Article[] = [];
         if (!Array.isArray(responseData)) {
-          setArticles(responseData.content || []);
+          newArticles = responseData.content || [];
           setPage(0);
           setTotalPages(responseData.totalPages || 0);
           setHasMore(!responseData.last);
         } else {
-          setArticles(responseData);
+          newArticles = responseData;
           setPage(0);
           setTotalPages(1);
           setHasMore(false);
         }
+
+        setArticles(newArticles);
+        AsyncStorage.setItem(
+          cacheKey,
+          JSON.stringify({ savedAt: Date.now(), data: newArticles })
+        ).catch(() => undefined);
+
       } catch (err: any) {
         if (err?.name === 'CanceledError' || err?.message === 'canceled') {
           return;
         }
         console.warn('[PressReviewScreen API Error]', err?.message || err);
         if (currentRequestId === requestId.current) {
-          setError('Không thể tải tin điểm báo. Vui lòng thử lại sau.');
+          setError(err?.message || 'Không thể tải tin điểm báo. Vui lòng thử lại sau.');
         }
       } finally {
         if (currentRequestId === requestId.current) {
           setLoading(false);
           setRefreshing(false);
+        }
+        if (isRefresh) {
+          refreshInFlightRef.current = false;
         }
       }
     },
@@ -165,8 +220,26 @@ export default function PressReviewScreen({ navigation }: any) {
     fetchPressArticles();
   }, [fetchPressArticles]);
 
+  useEffect(() => {
+    const handleBackPress = () => {
+      if (searchQuery !== '' || selectedSource !== 'Tất cả' || selectedTopic !== null || sortTab !== 'latest') {
+        setSearchQuery('');
+        setSelectedSource('Tất cả');
+        setSelectedTopic(null);
+        setSortTab('latest');
+        return true; // prevent default behavior (going back to ExploreScreen)
+      }
+      return false; // let default behavior happen (go back to ExploreScreen)
+    };
+
+    const subscription = BackHandler.addEventListener('hardwareBackPress', handleBackPress);
+    return () => {
+      subscription.remove();
+    };
+  }, [searchQuery, selectedSource, selectedTopic, sortTab]);
+
   const handleRefresh = () => {
-    if (refreshing) return;
+    if (refreshInFlightRef.current) return;
     fetchPressArticles(true);
   };
 
@@ -346,7 +419,7 @@ export default function PressReviewScreen({ navigation }: any) {
     );
   };
 
-  const renderHeader = () => {
+  const listHeaderElement = useMemo(() => {
     const isHeroBookmarked = heroArticle ? bookmarkedIds.includes(heroArticle.id) : false;
     const heroSrcColors = heroArticle ? getSourceColors(heroArticle.sourceName) : { bg: theme.primaryContainer, text: theme.primary };
 
@@ -355,7 +428,7 @@ export default function PressReviewScreen({ navigation }: any) {
         {error && articles.length > 0 ? (
           <View style={[styles.inlineWarning, { backgroundColor: theme.primaryContainer, borderColor: theme.border }]}>
             <WifiOff color={theme.primary} size={15} />
-            <Text style={[styles.inlineWarningText, { color: theme.textPrimary }]}>Không thể cập nhật tin điểm báo. Nội dung gần nhất vẫn được giữ lại.</Text>
+            <Text style={[styles.inlineWarningText, { color: theme.textPrimary }]}>Chưa thể cập nhật. Đang hiển thị dữ liệu gần nhất.</Text>
           </View>
         ) : null}
         <Text style={[styles.subtitle, { color: theme.textSecondary }]}>
@@ -364,6 +437,7 @@ export default function PressReviewScreen({ navigation }: any) {
 
         {/* Horizontal Sources Bar */}
         <ScrollView
+          ref={scrollRef}
           horizontal
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.sourcesScroll}
@@ -373,6 +447,10 @@ export default function PressReviewScreen({ navigation }: any) {
             return (
               <TouchableOpacity
                 key={src}
+                onLayout={(e) => {
+                  const { x, width } = e.nativeEvent.layout;
+                  chipLayouts.current[src] = { x, width };
+                }}
                 style={[
                   styles.sourceChip,
                   { backgroundColor: theme.cardBackground, borderColor: theme.border },
@@ -534,7 +612,7 @@ export default function PressReviewScreen({ navigation }: any) {
         )}
       </View>
     );
-  };
+  }, [error, articles, heroArticle, theme, fontSize, bookmarkedIds, selectedSource, sortTab, selectedTopic, showTopicPicker, debouncedQuery, handleArticlePress, handleBookmarkToggle]);
 
   const renderGroupedSearch = () => {
     const groups = groupedArticles();
@@ -572,7 +650,16 @@ export default function PressReviewScreen({ navigation }: any) {
       {/* Search and Navigation Header */}
       <View style={[styles.topBar, { backgroundColor: theme.headerBackground, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.15)' }]}>
         <TouchableOpacity
-          onPress={() => navigation.goBack()}
+          onPress={() => {
+            if (searchQuery !== '' || selectedSource !== 'Tất cả' || selectedTopic !== null || sortTab !== 'latest') {
+              setSearchQuery('');
+              setSelectedSource('Tất cả');
+              setSelectedTopic(null);
+              setSortTab('latest');
+            } else {
+              navigation.goBack();
+            }
+          }}
           style={[styles.headerButton, { borderColor: 'rgba(255,255,255,0.15)', backgroundColor: 'rgba(255,255,255,0.1)' }]}
           activeOpacity={0.7}
         >
@@ -631,7 +718,7 @@ export default function PressReviewScreen({ navigation }: any) {
           onRefresh={handleRefresh}
           onEndReached={loadMore}
           onEndReachedThreshold={0.4}
-          ListHeaderComponent={renderHeader}
+          ListHeaderComponent={listHeaderElement}
           ListFooterComponent={
             loadingMore ? <ActivityIndicator style={{ marginVertical: 16 }} color={theme.primary} /> : null
           }

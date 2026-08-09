@@ -46,6 +46,41 @@ export class ApiClientError extends Error {
   }
 }
 
+export const handleAxiosError = (e: any): never => {
+  if (axios.isCancel(e)) {
+    const cancelError = new ApiClientError('canceled');
+    cancelError.name = 'CanceledError';
+    throw cancelError;
+  }
+
+  if (e.code === 'ECONNABORTED' || e.message?.toLowerCase().includes('timeout')) {
+    throw new ApiClientError('Máy chủ phản hồi chậm.', 408);
+  }
+
+  if (!e.response) {
+    throw new ApiClientError('Không có kết nối tới máy chủ.', 0);
+  }
+
+  const status = e.response.status;
+  const message = e.response.data?.message || e.response.data || '';
+
+  if (status === 401) {
+    throw new ApiClientError(message || 'Phiên làm việc hết hạn.', 401);
+  }
+  if (status === 403) {
+    throw new ApiClientError('Bạn không có quyền thực hiện thao tác này.', 403);
+  }
+  if (status === 404) {
+    throw new ApiClientError(message || 'Không tìm thấy dữ liệu.', 404);
+  }
+  if (status >= 500) {
+    throw new ApiClientError(message || 'Lỗi hệ thống phía máy chủ.', status);
+  }
+  
+  throw new ApiClientError(message || 'Đã xảy ra lỗi không xác định.', status);
+};
+
+
 const api = axios.create({
   baseURL: BASE_URL,
   timeout: 10000,
@@ -81,7 +116,7 @@ api.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
-// Response interceptor to handle common authorization issues (P0.2)
+// Response interceptor to handle common authorization issues and standardize errors
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
@@ -90,6 +125,43 @@ api.interceptors.response.use(
       logout();
       await clearStoredSession();
     }
+
+    // Standardize error message on the error object
+    if (axios.isCancel(error)) {
+      error.message = 'canceled';
+    } else if (error.code === 'ECONNABORTED' || error.message?.toLowerCase().includes('timeout')) {
+      error.message = 'Máy chủ phản hồi chậm.';
+      if (error.response) {
+        error.response.data = { message: 'Máy chủ phản hồi chậm.' };
+      }
+    } else if (!error.response) {
+      error.message = 'Không có kết nối tới máy chủ.';
+    } else {
+      const status = error.response.status;
+      let backendMessage = '';
+      if (error.response.data) {
+        backendMessage = typeof error.response.data === 'string'
+          ? error.response.data
+          : error.response.data.message || error.response.data.detail || '';
+      }
+
+      let mappedMessage = backendMessage;
+      if (status === 403) {
+        mappedMessage = 'Bạn không có quyền thực hiện thao tác này.';
+      } else if (status === 404) {
+        mappedMessage = backendMessage || 'Không tìm thấy dữ liệu.';
+      } else if (status >= 500) {
+        mappedMessage = backendMessage || 'Lỗi hệ thống phía máy chủ.';
+      }
+
+      error.message = mappedMessage;
+      if (error.response.data && typeof error.response.data === 'object') {
+        error.response.data.message = mappedMessage;
+      } else {
+        error.response.data = { message: mappedMessage };
+      }
+    }
+
     return Promise.reject(error);
   }
 );

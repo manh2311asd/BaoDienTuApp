@@ -71,8 +71,8 @@ function autoDetectIp() {
   for (let i = 0; i < lines.length; i++) {
     if (lines[i].startsWith('EXPO_PUBLIC_API_URL=')) {
       const val = lines[i].replace('EXPO_PUBLIC_API_URL=', '').trim();
-      if (val.includes('localhost') || val.includes('127.0.0.1')) {
-        console.log(`[AutoIP] Detected manual localhost/127.0.0.1 setup: ${lines[i].trim()}. Skipping auto-detection.`);
+      if (val.includes('localhost') || val.includes('127.0.0.1') || envContent.includes('# manual')) {
+        console.log(`[AutoIP] Detected manual setup: ${lines[i].trim()}. Skipping auto-detection.`);
         return;
       }
       if (lines[i].trim() !== targetLine) {
