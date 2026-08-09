@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { UtilityEnvelope } from '../types/utilities';
 
-const PREFIX = '@BaoDienTu:utility:';
+const PREFIX = '@BaoDienTu:utility:v6:';
 
 export interface CachedUtility<T> {
   savedAt: number;
@@ -9,24 +9,8 @@ export interface CachedUtility<T> {
 }
 
 export const utilityCacheKeys = {
-  dashboard: (name: 'football' | 'finance' | 'lottery') =>
-    `dashboard:${name}`,
-  football: (
-    date: string,
-    competition: string,
-    season: string,
-    tab: string
-  ) => `football:${date}:${competition || 'all'}:${season || 'current'}:${tab}`,
-  footballStandings: (competition: string, season: string) =>
-    `football:standings:${competition || 'none'}:${season || 'current'}`,
+  dashboard: (name: 'finance') => `dashboard:${name}`,
   finance: (tab: 'forex' | 'gold' | 'stocks') => `finance:${tab}`,
-  lottery: (
-    region: string,
-    province: string,
-    drawDate: string,
-    lotteryType: string
-  ) =>
-    `lottery:${region}:${province || 'all'}:${drawDate}:${lotteryType || 'traditional'}`,
 };
 
 export async function readUtilityCache<T>(

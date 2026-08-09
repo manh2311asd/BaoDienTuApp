@@ -251,7 +251,7 @@ export interface UtilityThemeTokens {
 }
 
 export const utilityThemes: Record<
-  'calendar' | 'football' | 'finance' | 'lottery' | 'weather' | 'fuel',
+  'calendar' | 'finance' | 'weather' | 'fuel',
   UtilityThemeTokens
 > = {
   calendar: {
@@ -263,15 +263,7 @@ export const utilityThemes: Record<
     darkAccent: '#AE9AE4',
     darkContainer: '#342D49',
   },
-  football: {
-    accent: '#176B4D',
-    container: '#E4F3EA',
-    border: '#C6E2D2',
-    header: '#105F45',
-    canvas: '#F1FAF5',
-    darkAccent: '#73BE9F',
-    darkContainer: '#223A31',
-  },
+
   finance: {
     accent: '#1E6879',
     container: '#E2F1F4',
@@ -280,15 +272,6 @@ export const utilityThemes: Record<
     canvas: '#F1F9FB',
     darkAccent: '#75B8CD',
     darkContainer: '#233840',
-  },
-  lottery: {
-    accent: '#B72F3E',
-    container: '#FBE7EA',
-    border: '#EDC4CA',
-    header: '#942431',
-    canvas: '#FFF6F7',
-    darkAccent: '#EB8792',
-    darkContainer: '#40272B',
   },
   weather: {
     accent: '#287DA1',
@@ -347,7 +330,7 @@ export function getPageTheme(
   const shell = appTheme[themeMode];
   const utilityKey = pageId === 'pressReview'
     ? 'finance'
-    : pageId === 'football' || pageId === 'finance' || pageId === 'lottery'
+    : pageId === 'finance'
       ? pageId
       : undefined;
   const utility = utilityKey ? utilityThemes[utilityKey] : undefined;

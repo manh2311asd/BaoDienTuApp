@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   StyleSheet,
   View,
@@ -11,6 +11,7 @@ import {
   TextInput,
   ActivityIndicator,
   InteractionManager,
+  Dimensions,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -47,6 +48,9 @@ let homeNotificationCache: {
   savedAt: number;
 } | null = null;
 
+const HOME_ARTICLE_CACHE_KEY = '@BaoDienTu:home_articles_v3';
+const HOME_CATEGORY_CACHE_KEY = '@BaoDienTu:home_categories_v3';
+
 export default function HomeScreen({ navigation }: any) {
   const insets = useSafeAreaInsets();
   const { fontSize, showImages, themeMode, user } = useAppStore();
@@ -80,6 +84,37 @@ export default function HomeScreen({ navigation }: any) {
   const [hasMore, setHasMore] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const hasLoadedOnceRef = useRef(false);
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const categoryScrollRef = useRef<ScrollView>(null);
+  const chipLayoutsRef = useRef<{[key: string]: {x: number, width: number}}>({});
+
+  const scrollToChip = useCallback((catId: number | null) => {
+    setTimeout(() => {
+      const key = catId === null ? 'all' : catId.toString();
+      const layout = chipLayoutsRef.current[key];
+      if (layout && categoryScrollRef.current) {
+        const screenWidth = Dimensions.get('window').width;
+        const targetX = layout.x - screenWidth / 2 + layout.width / 2;
+        categoryScrollRef.current.scrollTo({
+          x: Math.max(0, targetX),
+          animated: true,
+        });
+      }
+    }, 50);
+  }, []);
+
+  const handleChipLayout = useCallback((key: string, event: any) => {
+    const { x, width } = event.nativeEvent.layout;
+    chipLayoutsRef.current[key] = { x, width };
+    const isSelected = (key === 'all' && selectedCatId === null) || (selectedCatId !== null && selectedCatId.toString() === key);
+    if (isSelected) {
+      scrollToChip(selectedCatId);
+    }
+  }, [selectedCatId, scrollToChip]);
+
+  useEffect(() => {
+    scrollToChip(selectedCatId);
+  }, [selectedCatId, categories, scrollToChip]);
 
   useFocusEffect(
     useCallback(() => {
@@ -114,15 +149,62 @@ export default function HomeScreen({ navigation }: any) {
     return () => clearTimeout(timer);
   }, [query]);
 
+  // SWR Cache Hydration on Mount
+  useEffect(() => {
+    let active = true;
+    const hydrate = async () => {
+      try {
+        const [cachedArticlesRaw, cachedCategoriesRaw] = await Promise.all([
+          AsyncStorage.getItem(HOME_ARTICLE_CACHE_KEY),
+          AsyncStorage.getItem(HOME_CATEGORY_CACHE_KEY),
+        ]);
+        if (!active) return;
+        if (cachedArticlesRaw) {
+          const parsed = JSON.parse(cachedArticlesRaw);
+          if (parsed && Array.isArray(parsed.data) && parsed.data.length > 0) {
+            setArticles(parsed.data);
+            setInitialLoading(false);
+            hasLoadedOnceRef.current = true;
+          }
+        }
+        if (cachedCategoriesRaw) {
+          const parsed = JSON.parse(cachedCategoriesRaw);
+          if (parsed && Array.isArray(parsed.data) && parsed.data.length > 0) {
+            setCategories(parsed.data);
+          }
+        }
+      } catch {
+        // Hydration error is fine
+      }
+    };
+    hydrate();
+    return () => {
+      active = false;
+    };
+  }, []);
+
   useEffect(() => {
     apiClient
       .getCategories()
-      .then((response) => setCategories(response.data || []))
+      .then((response) => {
+        const nextCategories = response.data || [];
+        setCategories(nextCategories);
+        AsyncStorage.setItem(
+          HOME_CATEGORY_CACHE_KEY,
+          JSON.stringify({ savedAt: Date.now(), data: nextCategories })
+        ).catch(() => undefined);
+      })
       .catch(() => setCategories([]));
   }, []);
 
   const fetchArticles = useCallback(async (isRefresh = false, targetPage = 0) => {
     const currentRequestId = ++requestId.current;
+
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
 
     if (isRefresh) {
       setRefreshing(true);
@@ -142,6 +224,8 @@ export default function HomeScreen({ navigation }: any) {
         origin: 'INTERNAL',
         page: targetPage,
         size: 15,
+      }, {
+        signal: controller.signal
       });
 
       if (currentRequestId === requestId.current) {
@@ -160,6 +244,13 @@ export default function HomeScreen({ navigation }: any) {
 
         if (targetPage === 0 || isRefresh) {
           setArticles(newArticles);
+          // Update cache for the first page of articles
+          if (!debouncedQuery && selectedCatId === null) {
+            AsyncStorage.setItem(
+              HOME_ARTICLE_CACHE_KEY,
+              JSON.stringify({ savedAt: Date.now(), data: newArticles })
+            ).catch(() => undefined);
+          }
         } else {
           setArticles(prev => [...prev, ...newArticles]);
         }
@@ -168,7 +259,11 @@ export default function HomeScreen({ navigation }: any) {
         setHasMore(!ended);
         hasLoadedOnceRef.current = true;
       }
-    } catch (requestError) {
+    } catch (requestError: any) {
+      if (requestError?.name === 'CanceledError' || requestError?.message === 'canceled') {
+        return;
+      }
+      console.warn('[HomeScreen API Error]', requestError?.message || requestError);
       if (currentRequestId === requestId.current) {
         setError(
           requestError instanceof Error
@@ -212,7 +307,21 @@ export default function HomeScreen({ navigation }: any) {
   }, [articles, categories, debouncedQuery, navigation, selectedCatId]);
 
   const handleRefresh = () => {
+    if (refreshing) return;
     fetchArticles(true, 0);
+    if (categories.length === 0) {
+      apiClient
+        .getCategories()
+        .then((response) => {
+          const nextCategories = response.data || [];
+          setCategories(nextCategories);
+          AsyncStorage.setItem(
+            HOME_CATEGORY_CACHE_KEY,
+            JSON.stringify({ savedAt: Date.now(), data: nextCategories })
+          ).catch(() => undefined);
+        })
+        .catch(() => setCategories([]));
+    }
   };
 
   const handleLoadMore = () => {
@@ -266,400 +375,430 @@ export default function HomeScreen({ navigation }: any) {
     );
   };
 
-  // Header of FlatList containing Logo, Date Bar, and Horizontal Categories
-  const renderHeader = () => {
+  // Memoized Header Element of FlatList containing Logo, Date Bar, Horizontal Categories, Error Warning, and Hero Article
+  const listHeaderElement = useMemo(() => {
     const today = new Date();
     const days = ['Chủ nhật', 'Thứ hai', 'Thứ ba', 'Thứ tư', 'Thứ năm', 'Thứ sáu', 'Thứ bảy'];
     const dateString = `${days[today.getDay()]}, Ngày ${today.getDate()} tháng ${today.getMonth() + 1}`;
 
+    const heroArticle = articles.length > 0 ? articles[0] : null;
+
     return (
-      <View
-        style={[
-          styles.headerBlock,
-          { backgroundColor: shell.appBackgroundAlt, borderColor: shell.appBorder },
-        ]}
-      >
-        <View style={[styles.masthead, { backgroundColor: homeHeader }]}>
-          {/* Masthead Branding */}
-          <View style={styles.brandRow}>
-            <Text style={[styles.brandTitle, { color: shell.appHeaderText }]}>NewsDaily</Text>
-            <View style={styles.utilityRow}>
-            <TouchableOpacity
-              accessibilityLabel="Chọn cỡ chữ"
-              hitSlop={4}
-              onPress={() => navigation.navigate('FontTypographySettings')}
-              style={[
-                styles.iconBtn,
-                { backgroundColor: shell.appSurface, borderColor: shell.appBorder },
-              ]}
-            >
-              <Text style={[styles.aaLabel, { color: shell.appControlIcon }]}>Aa</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              accessibilityLabel="Mở thời tiết"
-              hitSlop={4}
-              onPress={() => navigation.navigate('Weather')}
-              style={[
-                styles.iconBtn,
-                { backgroundColor: shell.appSurface, borderColor: shell.appBorder },
-              ]}
-            >
-              <CloudSun color={shell.appControlIcon} size={20} {...IC} />
-            </TouchableOpacity>
-            <TouchableOpacity
-              accessibilityLabel="Mở thông báo"
-              hitSlop={4}
-              onPress={() =>
-                user
-                  ? navigation.navigate('Notifications')
-                  : navigation.navigate('ProfileTab')
-              }
-              style={[
-                styles.iconBtn,
-                { backgroundColor: shell.appSurface, borderColor: shell.appBorder },
-              ]}
-            >
-              <Bell color={shell.appControlIcon} size={18} {...IC} />
-              {unreadCount > 0 && (
-                <View
-                  style={[
-                    styles.notificationBadge,
-                    { backgroundColor: shell.appError, borderColor: homeHeader },
-                  ]}
-                >
-                  <Text style={[styles.notificationBadgeText, { color: shell.appOnPrimary }]}>
-                    {unreadCount > 9 ? '9+' : unreadCount}
-                  </Text>
-                </View>
-              )}
-            </TouchableOpacity>
-            </View>
-          </View>
-
-          {/* Date Bar */}
-          <View style={styles.dateBar}>
-            <TouchableOpacity
-              accessibilityLabel="Mở lịch"
-              hitSlop={6}
-              onPress={() => navigation.navigate('Calendar')}
-            >
-              <Text style={[styles.dateText, { color: shell.appHeaderTextSecondary }]}>{dateString}</Text>
-            </TouchableOpacity>
-            <View style={[styles.editionBadge, { backgroundColor: shell.appPrimaryContainer }]}>
-              <Text style={[styles.editionText, { color: shell.appAccentText }]}>Bản kỹ thuật số</Text>
-            </View>
-          </View>
-        </View>
-
+      <>
         <View
           style={[
-            styles.searchBox,
-            {
-              backgroundColor: homeSurface,
-              borderColor: searchFocused ? shell.appPrimary : shell.appBorder,
-            },
+            styles.headerBlock,
+            { backgroundColor: shell.appBackgroundAlt, borderColor: shell.appBorder },
           ]}
         >
-          <Search color={shell.appPrimary} size={17} {...IC} />
-          <TextInput
-            value={query}
-            onChangeText={setQuery}
-            onFocus={() => setSearchFocused(true)}
-            onBlur={() => setSearchFocused(false)}
-            placeholder="Tìm bài viết"
-            placeholderTextColor={shell.appSearchPlaceholder}
-            style={[styles.searchInput, { color: colors.text }]}
-            returnKeyType="search"
-            autoCorrect={false}
-          />
-          {backgroundFetching && !refreshing && (
-            <ActivityIndicator color={shell.appPrimary} size="small" />
-          )}
-        </View>
+          <View style={[styles.masthead, { backgroundColor: homeHeader }]}>
+            {/* Masthead Branding */}
+            <View style={styles.brandRow}>
+              <Text style={[styles.brandTitle, { color: shell.appHeaderText }]}>NewsDaily</Text>
+              <View style={styles.utilityRow}>
+                <TouchableOpacity
+                  accessibilityLabel="Chọn cỡ chữ"
+                  hitSlop={4}
+                  onPress={() => navigation.navigate('FontTypographySettings')}
+                  style={[
+                    styles.iconBtn,
+                    { backgroundColor: shell.appSurface, borderColor: shell.appBorder },
+                  ]}
+                >
+                  <Text style={[styles.aaLabel, { color: shell.appControlIcon }]}>Aa</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  accessibilityLabel="Mở thời tiết"
+                  hitSlop={4}
+                  onPress={() => navigation.navigate('Weather')}
+                  style={[
+                    styles.iconBtn,
+                    { backgroundColor: shell.appSurface, borderColor: shell.appBorder },
+                  ]}
+                >
+                  <CloudSun color={shell.appControlIcon} size={20} {...IC} />
+                </TouchableOpacity>
+                <TouchableOpacity
+                  accessibilityLabel="Mở thông báo"
+                  hitSlop={4}
+                  onPress={() =>
+                    user
+                      ? navigation.navigate('Notifications')
+                      : navigation.navigate('ProfileTab')
+                  }
+                  style={[
+                    styles.iconBtn,
+                    { backgroundColor: shell.appSurface, borderColor: shell.appBorder },
+                  ]}
+                >
+                  <Bell color={shell.appControlIcon} size={18} {...IC} />
+                  {unreadCount > 0 && (
+                    <View
+                      style={[
+                        styles.notificationBadge,
+                        { backgroundColor: shell.appError, borderColor: homeHeader },
+                      ]}
+                    >
+                      <Text style={[styles.notificationBadgeText, { color: shell.appOnPrimary }]}>
+                        {unreadCount > 9 ? '9+' : unreadCount}
+                      </Text>
+                    </View>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </View>
 
-        {/* Horizontal Category Scroll Bar */}
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.categoryScroll}
-        >
-          <TouchableOpacity
-            accessibilityRole="button"
-            hitSlop={{ top: 6, bottom: 6 }}
+            {/* Date Bar */}
+            <View style={styles.dateBar}>
+              <TouchableOpacity
+                accessibilityLabel="Mở lịch"
+                hitSlop={6}
+                onPress={() => navigation.navigate('Calendar')}
+              >
+                <Text style={[styles.dateText, { color: shell.appHeaderTextSecondary }]}>{dateString}</Text>
+              </TouchableOpacity>
+              <View style={[styles.editionBadge, { backgroundColor: shell.appPrimaryContainer }]}>
+                <Text style={[styles.editionText, { color: shell.appAccentText }]}>Bản kỹ thuật số</Text>
+              </View>
+            </View>
+          </View>
+
+          <View
             style={[
-              styles.categoryChip,
-              { backgroundColor: dark ? shell.appSurface : shell.appCategoryContainer, borderColor: shell.appCategoryBorder },
-              selectedCatId === null && { backgroundColor: homeAccent, borderColor: homeAccent },
+              styles.searchBox,
+              {
+                backgroundColor: homeSurface,
+                borderColor: searchFocused ? shell.appPrimary : shell.appBorder,
+              },
             ]}
-            onPress={() => setSelectedCatId(null)}
           >
-            <Text 
-              style={[
-                styles.categoryText,
-                { color: colors.textMuted },
-                selectedCatId === null && { color: shell.appOnPrimary },
-              ]}
-            >
-              Tất cả
-            </Text>
-          </TouchableOpacity>
-          {categories.map((cat) => (
+            <Search color={shell.appPrimary} size={17} {...IC} />
+            <TextInput
+              value={query}
+              onChangeText={setQuery}
+              onFocus={() => setSearchFocused(true)}
+              onBlur={() => setSearchFocused(false)}
+              placeholder="Tìm bài viết"
+              placeholderTextColor={shell.appSearchPlaceholder}
+              style={[styles.searchInput, { color: colors.text }]}
+              returnKeyType="search"
+              autoCorrect={false}
+            />
+            {backgroundFetching && !refreshing && (
+              <ActivityIndicator color={shell.appPrimary} size="small" />
+            )}
+          </View>
+
+          {/* Horizontal Category Scroll Bar */}
+          <ScrollView
+            ref={categoryScrollRef}
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.categoryScroll}
+          >
             <TouchableOpacity
-              key={cat.id}
               accessibilityRole="button"
               hitSlop={{ top: 6, bottom: 6 }}
               style={[
                 styles.categoryChip,
                 { backgroundColor: dark ? shell.appSurface : shell.appCategoryContainer, borderColor: shell.appCategoryBorder },
-                selectedCatId === cat.id && { backgroundColor: homeAccent, borderColor: homeAccent },
+                selectedCatId === null && { backgroundColor: homeAccent, borderColor: homeAccent },
               ]}
-              onPress={() => setSelectedCatId(cat.id)}
+              onLayout={(e) => handleChipLayout('all', e)}
+              onPress={() => setSelectedCatId(null)}
             >
               <Text 
                 style={[
                   styles.categoryText,
                   { color: colors.textMuted },
-                  selectedCatId === cat.id && { color: shell.appOnPrimary },
+                  selectedCatId === null && { color: shell.appOnPrimary },
                 ]}
               >
-                {cat.name}
+                Tất cả
               </Text>
             </TouchableOpacity>
-          ))}
-        </ScrollView>
-      </View>
+            {categories.map((cat) => (
+              <TouchableOpacity
+                key={cat.id}
+                accessibilityRole="button"
+                hitSlop={{ top: 6, bottom: 6 }}
+                style={[
+                  styles.categoryChip,
+                  { backgroundColor: dark ? shell.appSurface : shell.appCategoryContainer, borderColor: shell.appCategoryBorder },
+                  selectedCatId === cat.id && { backgroundColor: homeAccent, borderColor: homeAccent },
+                ]}
+                onLayout={(e) => handleChipLayout(cat.id.toString(), e)}
+                onPress={() => setSelectedCatId(cat.id)}
+              >
+                <Text 
+                  style={[
+                    styles.categoryText,
+                    { color: colors.textMuted },
+                    selectedCatId === cat.id && { color: shell.appOnPrimary },
+                  ]}
+                >
+                  {cat.name}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
+
+        {/* Error Warning Banner */}
+        {error && articles.length > 0 ? (
+          <View
+            style={[
+              styles.inlineWarning,
+              {
+                backgroundColor: shell.appPrimaryContainer,
+                borderColor: shell.appBorder,
+              },
+            ]}
+          >
+            <WifiOff color={shell.appError} size={15} {...IC} />
+            <Text style={[styles.inlineWarningText, { color: colors.text }]}>Không thể cập nhật tin mới. Nội dung gần nhất vẫn được giữ lại.</Text>
+          </View>
+        ) : null}
+
+        {/* Hero Article */}
+        {heroArticle ? (
+          <TouchableOpacity
+            style={[
+              styles.heroCard,
+              { backgroundColor: homeSurface, borderColor: colors.border },
+            ]}
+            onPress={() => {
+              if (heroArticle.origin === 'EXTERNAL') {
+                navigation.navigate('ArticleWebView', {
+                  url: heroArticle.originalUrl,
+                  title: heroArticle.title,
+                });
+              } else {
+                navigation.navigate('ArticleDetail', {
+                  articleId: heroArticle.id,
+                  articleType: heroArticle.type,
+                });
+              }
+            }}
+            activeOpacity={0.9}
+          >
+            {showImages && heroArticle.coverImage ? (
+              <Image source={{ uri: heroArticle.coverImage }} style={styles.heroImage} />
+            ) : (
+              <View
+                style={[
+                  styles.heroImage,
+                  styles.imagePlaceholder,
+                  { backgroundColor: colors.border },
+                ]}
+              />
+            )}
+            <View style={styles.heroContent}>
+              {heroArticle.type === 'VIP' && (
+                <View style={[styles.vipBadge, { backgroundColor: shell.appYellowContainer }]}>
+                  <Star color={shell.appWarning} size={10} fill={shell.appWarning} {...IC} />
+                  <Text style={[styles.vipText, { color: shell.appWarning }]}>VIP EXCLUSIVE</Text>
+                </View>
+              )}
+              <Text
+                style={[
+                  styles.heroTitle,
+                  {
+                    color: colors.text,
+                    fontSize: scaleFont(23, fontSize),
+                    lineHeight: scaleLineHeight(29, fontSize),
+                  },
+                ]}
+                allowFontScaling
+              >
+                {heroArticle.title}
+              </Text>
+              <Text
+                style={[
+                  styles.heroSapo,
+                  {
+                    color: colors.textMuted,
+                    fontSize: scaleFont(14, fontSize),
+                    lineHeight: scaleLineHeight(21, fontSize),
+                  },
+                ]}
+                allowFontScaling
+                numberOfLines={3}
+              >
+                {heroArticle.sapo}
+              </Text>
+              <View style={styles.metaRow}>
+                {heroArticle.origin === 'EXTERNAL' && heroArticle.sourceName && (
+                  <View style={[styles.sourceBadge, { backgroundColor: shell.appSecondaryContainer }]}>
+                    <Text style={[styles.sourceText, { color: shell.appSecondary }]}>{heroArticle.sourceName}</Text>
+                  </View>
+                )}
+                <Text style={[styles.metaLabel, { color: shell.appPrimary }]}>{heroArticle.categoryName || 'Tin tức'}</Text>
+                <Text style={[styles.metaDot, { color: colors.border }]}>·</Text>
+                <Text style={[styles.metaLabel, { color: colors.textMuted }]}>{formatDate(heroArticle.createdAt)}</Text>
+                {heroArticle.viewCount > 0 && (
+                  <>
+                    <Text style={[styles.metaDot, { color: colors.border }]}>·</Text>
+                    <Eye color={colors.textMuted} size={11} style={{ marginRight: 2 }} {...IC} />
+                    <Text style={[styles.metaLabel, { color: colors.textMuted }]}>{heroArticle.viewCount} lượt xem</Text>
+                  </>
+                )}
+              </View>
+            </View>
+          </TouchableOpacity>
+        ) : null}
+      </>
     );
-  };
+  }, [
+    unreadCount,
+    query,
+    searchFocused,
+    backgroundFetching,
+    refreshing,
+    categories,
+    selectedCatId,
+    dark,
+    shell,
+    colors,
+    homeSurface,
+    homeAccent,
+    homeHeader,
+    error,
+    articles,
+    showImages,
+    fontSize,
+    navigation,
+    handleChipLayout,
+    scrollToChip,
+  ]);
 
   // Split Articles into Hero (1st) and Compact (rest)
-  const heroArticle = articles.length > 0 ? articles[0] : null;
-  const listArticles = articles.length > 1 ? articles.slice(1) : [];
+  const { heroArticle, listArticles } = useMemo(() => {
+    return {
+      heroArticle: articles.length > 0 ? articles[0] : null,
+      listArticles: articles.length > 1 ? articles.slice(1) : [],
+    };
+  }, [articles]);
 
   return (
     <SafeAreaView
       edges={['top']}
       style={[styles.root, { backgroundColor: homeCanvas }]}
     >
-      {renderHeader()}
-
-      {initialLoading && articles.length === 0 ? (
-        renderSkeleton()
-      ) : error && articles.length === 0 ? (
-        <View style={styles.emptyCenter}>
-          <WifiOff color={colors.textMuted} size={36} {...IC} />
-          <Text style={[styles.emptyTitle, { color: colors.text }]}>Không thể tải tin</Text>
-          <Text style={[styles.emptySub, { color: colors.textMuted }]}>{error}</Text>
-          <TouchableOpacity
-            style={[styles.retryBtn, { backgroundColor: shell.appPrimary }]}
-            onPress={() => fetchArticles()}
-          >
-            <Text style={[styles.retryBtnText, { color: shell.appOnPrimary }]}>Thử lại</Text>
-          </TouchableOpacity>
-        </View>
-      ) : articles.length === 0 ? (
-        <View style={styles.emptyCenter}>
-          <Compass color={colors.textMuted} size={36} {...IC} />
-          <Text style={[styles.emptyTitle, { color: colors.text }]}>Chưa có bài viết</Text>
-          <Text style={[styles.emptySub, { color: colors.textMuted }]}>Không tìm thấy bài viết nào phù hợp trong danh mục này.</Text>
-        </View>
-      ) : (
-        <>
-          {error ? (
-            <View
-              style={[
-                styles.inlineWarning,
-                {
-                  backgroundColor: shell.appPrimaryContainer,
-                  borderColor: shell.appBorder,
-                },
-              ]}
-            >
-              <WifiOff color={shell.appError} size={15} {...IC} />
-              <Text style={[styles.inlineWarningText, { color: colors.text }]}>Không thể cập nhật tin mới. Nội dung gần nhất vẫn được giữ lại.</Text>
-            </View>
-          ) : null}
-          <FlatList
-          data={listArticles}
-          keyExtractor={(item) => item.id.toString()}
-          refreshing={refreshing}
-          onRefresh={handleRefresh}
-          onEndReached={handleLoadMore}
-          onEndReachedThreshold={0.5}
-          contentContainerStyle={[
-            styles.listContainer,
-            { paddingBottom: 78 + insets.bottom },
-          ]}
-          showsVerticalScrollIndicator={false}
-          initialNumToRender={5}
-          maxToRenderPerBatch={5}
-          updateCellsBatchingPeriod={60}
-          windowSize={7}
-          removeClippedSubviews={Platform.OS === 'android'}
-          ListFooterComponent={() => {
-            if (!loadingMore) return null;
-            return <ActivityIndicator size="small" color={colors.text} style={{ marginVertical: 16 }} />;
-          }}
-          ListHeaderComponent={() => {
-            if (!heroArticle) return null;
+      <FlatList
+        data={listArticles}
+        keyExtractor={(item) => item.id.toString()}
+        refreshing={refreshing}
+        onRefresh={handleRefresh}
+        onEndReached={handleLoadMore}
+        onEndReachedThreshold={0.5}
+        contentContainerStyle={[
+          styles.listContainer,
+          { paddingBottom: 78 + insets.bottom },
+          articles.length === 0 && { flexGrow: 1, justifyContent: 'center' }
+        ]}
+        showsVerticalScrollIndicator={false}
+        initialNumToRender={5}
+        maxToRenderPerBatch={5}
+        updateCellsBatchingPeriod={60}
+        windowSize={7}
+        removeClippedSubviews={Platform.OS === 'android'}
+        ListFooterComponent={() => {
+          if (!loadingMore) return null;
+          return <ActivityIndicator size="small" color={colors.text} style={{ marginVertical: 16 }} />;
+        }}
+        ListEmptyComponent={() => {
+          if (initialLoading) return renderSkeleton();
+          if (error) {
             return (
-              <TouchableOpacity
-                style={[
-                  styles.heroCard,
-                  { backgroundColor: homeSurface, borderColor: colors.border },
-                ]}
-                onPress={() => {
-                  if (heroArticle.origin === 'EXTERNAL') {
-                    navigation.navigate('ArticleWebView', {
-                      url: heroArticle.originalUrl,
-                      title: heroArticle.title,
-                    });
-                  } else {
-                    navigation.navigate('ArticleDetail', {
-                      articleId: heroArticle.id,
-                      articleType: heroArticle.type,
-                    });
-                  }
-                }}
-                activeOpacity={0.9}
-              >
-                {showImages && heroArticle.coverImage ? (
-                  <Image source={{ uri: heroArticle.coverImage }} style={styles.heroImage} />
-                ) : (
-                  <View
-                    style={[
-                      styles.heroImage,
-                      styles.imagePlaceholder,
-                      { backgroundColor: colors.border },
-                    ]}
-                  />
-                )}
-                <View style={styles.heroContent}>
-                  {heroArticle.type === 'VIP' && (
-                    <View style={[styles.vipBadge, { backgroundColor: shell.appYellowContainer }]}>
-                      <Star color={shell.appWarning} size={10} fill={shell.appWarning} {...IC} />
-                      <Text style={[styles.vipText, { color: shell.appWarning }]}>VIP EXCLUSIVE</Text>
-                    </View>
-                  )}
-                  <Text
-                    style={[
-                      styles.heroTitle,
-                      {
-                        color: colors.text,
-                        fontSize: scaleFont(23, fontSize),
-                        lineHeight: scaleLineHeight(29, fontSize),
-                      },
-                    ]}
-                    allowFontScaling
-                  >
-                    {heroArticle.title}
-                  </Text>
-                  <Text
-                    style={[
-                      styles.heroSapo,
-                      {
-                        color: colors.textMuted,
-                        fontSize: scaleFont(14, fontSize),
-                        lineHeight: scaleLineHeight(21, fontSize),
-                      },
-                    ]}
-                    allowFontScaling
-                    numberOfLines={3}
-                  >
-                    {heroArticle.sapo}
-                  </Text>
-                  
-                  <View style={styles.metaRow}>
-                    {heroArticle.origin === 'EXTERNAL' && heroArticle.sourceName && (
-                      <View style={[styles.sourceBadge, { backgroundColor: shell.appSecondaryContainer }]}>
-                        <Text style={[styles.sourceText, { color: shell.appSecondary }]}>{heroArticle.sourceName}</Text>
-                      </View>
-                    )}
-                    <Text style={[styles.metaLabel, { color: shell.appPrimary }]}>{heroArticle.categoryName || 'Tin tức'}</Text>
-                    <Text style={[styles.metaDot, { color: colors.border }]}>·</Text>
-                    <Text style={[styles.metaLabel, { color: colors.textMuted }]}>{formatDate(heroArticle.createdAt)}</Text>
-                    {heroArticle.viewCount > 0 && (
-                      <>
-                        <Text style={[styles.metaDot, { color: colors.border }]}>·</Text>
-                        <Eye color={colors.textMuted} size={11} style={{ marginRight: 2 }} {...IC} />
-                        <Text style={[styles.metaLabel, { color: colors.textMuted }]}>{heroArticle.viewCount} lượt xem</Text>
-                      </>
-                    )}
-                  </View>
-                </View>
-              </TouchableOpacity>
-            );
-          }}
-          renderItem={({ item }) => (
-            <TouchableOpacity
-              style={[
-                styles.compactCard,
-                { backgroundColor: homeSurface, borderColor: colors.border },
-              ]}
-              onPress={() => {
-                if (item.origin === 'EXTERNAL') {
-                  navigation.navigate('ArticleWebView', {
-                    url: item.originalUrl,
-                    title: item.title,
-                  });
-                } else {
-                  navigation.navigate('ArticleDetail', {
-                    articleId: item.id,
-                    articleType: item.type,
-                  });
-                }
-              }}
-              activeOpacity={0.8}
-            >
-              <View style={styles.compactTextContainer}>
-                {item.type === 'VIP' && (
-                  <View style={[styles.vipBadge, { marginBottom: 4, backgroundColor: shell.appYellowContainer }]}>
-                    <Text style={[styles.vipText, { color: shell.appWarning }]}>VIP</Text>
-                  </View>
-                )}
-                <Text
-                  style={[
-                    styles.compactTitle,
-                    {
-                      color: colors.text,
-                      fontSize: scaleFont(17, fontSize),
-                      lineHeight: scaleLineHeight(22, fontSize),
-                    },
-                  ]}
-                  allowFontScaling
-                  numberOfLines={fontSize === 'xlarge' ? 3 : 2}
+              <View style={styles.emptyCenter}>
+                <WifiOff color={colors.textMuted} size={36} {...IC} />
+                <Text style={[styles.emptyTitle, { color: colors.text }]}>Không thể tải tin</Text>
+                <Text style={[styles.emptySub, { color: colors.textMuted }]}>{error}</Text>
+                <TouchableOpacity
+                  style={[styles.retryBtn, { backgroundColor: shell.appPrimary }]}
+                  onPress={() => fetchArticles()}
                 >
-                  {item.title}
-                </Text>
-                
-                <View style={styles.metaRow}>
-                  {item.origin === 'EXTERNAL' && item.sourceName && (
-                    <View style={[styles.sourceBadge, { backgroundColor: shell.appSecondaryContainer }]}>
-                      <Text style={[styles.sourceText, { color: shell.appSecondary }]}>{item.sourceName}</Text>
-                    </View>
-                  )}
-                  <Text style={[styles.metaLabel, { color: shell.appPrimary }]}>{item.categoryName || 'Tin tức'}</Text>
-                  <Text style={[styles.metaDot, { color: colors.border }]}>·</Text>
-                  <Text style={[styles.metaLabel, { color: colors.textMuted }]}>{formatDate(item.createdAt)}</Text>
-                </View>
+                  <Text style={[styles.retryBtnText, { color: shell.appOnPrimary }]}>Thử lại</Text>
+                </TouchableOpacity>
               </View>
-              
-              {showImages && item.coverImage ? (
-                <Image source={{ uri: item.coverImage }} style={styles.compactThumb} />
-              ) : (
-                <View
-                  style={[
-                    styles.compactThumb,
-                    styles.imagePlaceholder,
-                    { backgroundColor: colors.border },
-                  ]}
-                />
+            );
+          }
+          return (
+            <View style={styles.emptyCenter}>
+              <Compass color={colors.textMuted} size={36} {...IC} />
+              <Text style={[styles.emptyTitle, { color: colors.text }]}>Chưa có bài viết</Text>
+              <Text style={[styles.emptySub, { color: colors.textMuted }]}>Không tìm thấy bài viết nào phù hợp trong danh mục này.</Text>
+            </View>
+          );
+        }}
+        ListHeaderComponent={listHeaderElement}
+        renderItem={({ item }) => (
+          <TouchableOpacity
+            style={[
+              styles.compactCard,
+              { backgroundColor: homeSurface, borderColor: colors.border },
+            ]}
+            onPress={() => {
+              if (item.origin === 'EXTERNAL') {
+                navigation.navigate('ArticleWebView', {
+                  url: item.originalUrl,
+                  title: item.title,
+                });
+              } else {
+                navigation.navigate('ArticleDetail', {
+                  articleId: item.id,
+                  articleType: item.type,
+                });
+              }
+            }}
+            activeOpacity={0.8}
+          >
+            <View style={styles.compactTextContainer}>
+              {item.type === 'VIP' && (
+                <View style={[styles.vipBadge, { marginBottom: 4, backgroundColor: shell.appYellowContainer }]}>
+                  <Text style={[styles.vipText, { color: shell.appWarning }]}>VIP</Text>
+                </View>
               )}
-            </TouchableOpacity>
-          )}
-          />
-        </>
-      )}
-
+              <Text
+                style={[
+                  styles.compactTitle,
+                  {
+                    color: colors.text,
+                    fontSize: scaleFont(17, fontSize),
+                    lineHeight: scaleLineHeight(22, fontSize),
+                  },
+                ]}
+                allowFontScaling
+                numberOfLines={fontSize === 'xlarge' ? 3 : 2}
+              >
+                {item.title}
+              </Text>
+              <View style={styles.metaRow}>
+                {item.origin === 'EXTERNAL' && item.sourceName && (
+                  <View style={[styles.sourceBadge, { backgroundColor: shell.appSecondaryContainer }]}>
+                    <Text style={[styles.sourceText, { color: shell.appSecondary }]}>{item.sourceName}</Text>
+                  </View>
+                )}
+                <Text style={[styles.metaLabel, { color: shell.appPrimary }]}>{item.categoryName || 'Tin tức'}</Text>
+                <Text style={[styles.metaDot, { color: colors.border }]}>·</Text>
+                <Text style={[styles.metaLabel, { color: colors.textMuted }]}>{formatDate(item.createdAt)}</Text>
+              </View>
+            </View>
+            {showImages && item.coverImage ? (
+              <Image source={{ uri: item.coverImage }} style={styles.compactThumb} />
+            ) : (
+              <View
+                style={[
+                  styles.compactThumb,
+                  styles.imagePlaceholder,
+                  { backgroundColor: colors.border },
+                ]}
+              />
+            )}
+          </TouchableOpacity>
+        )}
+      />
     </SafeAreaView>
   );
 }

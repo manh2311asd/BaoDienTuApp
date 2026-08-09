@@ -1,6 +1,6 @@
 # NewsDaily
 
-Ứng dụng đọc báo di động viết bằng React Native 0.81 và Expo SDK 54. Ứng dụng có luồng đọc tin công khai, tìm kiếm theo chuyên mục, bài VIP, bình luận, bài đã lưu, đọc ngoại tuyến, đọc thành tiếng, lịch và thời tiết.
+Ứng dụng đọc báo di động viết bằng React Native 0.81 và Expo SDK 54. Ứng dụng có luồng đọc tin công khai, tìm kiếm theo chuyên mục, bài VIP, bình luận, bài đã lưu, đọc ngoại tuyến, đọc thành tiếng, lịch, đếm ngày, nhắc việc và công cụ nhanh.
 
 ## Cấu hình
 

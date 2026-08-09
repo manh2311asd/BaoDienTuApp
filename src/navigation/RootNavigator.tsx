@@ -5,36 +5,56 @@ import type { NavigatorScreenParams } from '@react-navigation/native';
 import { useAppStore } from '../store/useAppStore';
 import { BookOpen, Compass, House, UserCircle } from 'phosphor-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Animated, Text } from 'react-native';
+import { Animated, Text, ActivityIndicator, View } from 'react-native';
 import { appTheme, mainShellTheme } from '../theme/colors';
 
-// Import screens
+// Import core screens (loaded statically for startup and navigation speed)
 import HomeScreen from '../screens/Home/HomeScreen';
 import LibraryScreen from '../screens/Library/LibraryScreen';
 import ProfileScreen from '../screens/Profile/ProfileScreen';
-import VipPackagesScreen from '../screens/VipPackages/VipPackagesScreen';
 import ArticleDetailScreen from '../screens/ArticleDetail/ArticleDetailScreen';
-import CalendarScreen from '../screens/Calendar/CalendarScreen';
 import UtilitiesScreen from '../screens/Utilities/UtilitiesScreen';
-import FootballScreen from '../screens/Football/FootballScreen';
-import FinanceScreen from '../screens/Finance/FinanceScreen';
-import LotteryScreen from '../screens/Lottery/LotteryScreen';
-import WeatherScreen from '../screens/Weather/WeatherScreen';
-import WeatherSettingsScreen from '../screens/Weather/WeatherSettingsScreen';
-import AuthorDetailScreen from '../screens/Author/AuthorDetailScreen';
 import LoginScreen from '../screens/Login/LoginScreen';
 import ExploreScreen from '../screens/Explore/ExploreScreen';
-import NotificationsScreen from '../screens/Notifications/NotificationsScreen';
-import StaffWorkspaceScreen from '../screens/Staff/StaffWorkspaceScreen';
-import ArticleEditorScreen from '../screens/Staff/ArticleEditorScreen';
-import ModerationReviewScreen from '../screens/Staff/ModerationReviewScreen';
-import AdminUsersScreen from '../screens/Staff/AdminUsersScreen';
-import ArticleWebViewScreen from '../screens/ArticleWebView/ArticleWebViewScreen';
-import PressReviewScreen from '../screens/Explore/PressReviewScreen';
-import FontTypographySettingsScreen from '../screens/Settings/FontTypographySettingsScreen';
-import AppearanceSettingsScreen from '../screens/Settings/AppearanceSettingsScreen';
-import DownloadDataSettingsScreen from '../screens/Settings/DownloadDataSettingsScreen';
-import PublicUserProfileScreen from '../screens/PublicUserProfile/PublicUserProfileScreen';
+
+// Lazy loading helper for non-critical screens to reduce startup parsing cost
+const lazyScreen = (importFunc: () => Promise<{ default: React.ComponentType<any> }>) => {
+  const LazyComponent = React.lazy(importFunc);
+  return (props: any) => (
+    <React.Suspense
+      fallback={
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+          <ActivityIndicator size="large" color="#1E6879" />
+        </View>
+      }
+    >
+      <LazyComponent {...props} />
+    </React.Suspense>
+  );
+};
+
+// Lazy loaded screens
+const VipPackagesScreen = lazyScreen(() => import('../screens/VipPackages/VipPackagesScreen'));
+const CalendarScreen = lazyScreen(() => import('../screens/Calendar/CalendarScreen'));
+const FinanceScreen = lazyScreen(() => import('../screens/Finance/FinanceScreen'));
+const DayCounterScreen = lazyScreen(() => import('../screens/DayCounter/DayCounterScreen'));
+const RemindersScreen = lazyScreen(() => import('../screens/Reminders/RemindersScreen'));
+const QuickConverterScreen = lazyScreen(() => import('../screens/QuickConverter/QuickConverterScreen'));
+const QuickCalculatorScreen = lazyScreen(() => import('../screens/QuickCalculator/QuickCalculatorScreen'));
+const WeatherScreen = lazyScreen(() => import('../screens/Weather/WeatherScreen'));
+const WeatherSettingsScreen = lazyScreen(() => import('../screens/Weather/WeatherSettingsScreen'));
+const AuthorDetailScreen = lazyScreen(() => import('../screens/Author/AuthorDetailScreen'));
+const NotificationsScreen = lazyScreen(() => import('../screens/Notifications/NotificationsScreen'));
+const StaffWorkspaceScreen = lazyScreen(() => import('../screens/Staff/StaffWorkspaceScreen'));
+const ArticleEditorScreen = lazyScreen(() => import('../screens/Staff/ArticleEditorScreen'));
+const ModerationReviewScreen = lazyScreen(() => import('../screens/Staff/ModerationReviewScreen'));
+const AdminUsersScreen = lazyScreen(() => import('../screens/Staff/AdminUsersScreen'));
+const ArticleWebViewScreen = lazyScreen(() => import('../screens/ArticleWebView/ArticleWebViewScreen'));
+const PressReviewScreen = lazyScreen(() => import('../screens/Explore/PressReviewScreen'));
+const FontTypographySettingsScreen = lazyScreen(() => import('../screens/Settings/FontTypographySettingsScreen'));
+const AppearanceSettingsScreen = lazyScreen(() => import('../screens/Settings/AppearanceSettingsScreen'));
+const DownloadDataSettingsScreen = lazyScreen(() => import('../screens/Settings/DownloadDataSettingsScreen'));
+const PublicUserProfileScreen = lazyScreen(() => import('../screens/PublicUserProfile/PublicUserProfileScreen'));
 
 export type RootStackParamList = {
   MainTabs: NavigatorScreenParams<TabParamList> | undefined;
@@ -47,9 +67,12 @@ export type RootStackParamList = {
   VipPackages: undefined;
   Calendar: undefined;
   Utilities: undefined;
-  Football: undefined;
+
   Finance: undefined;
-  Lottery: undefined;
+  DayCounter: undefined;
+  Reminders: { title?: string; date?: string } | undefined;
+  QuickConverter: undefined;
+  QuickCalculator: undefined;
   Weather: undefined;
   WeatherSettings: undefined;
   AuthorDetail: { authorId: number; authorName: string };
@@ -145,6 +168,7 @@ const TabNavigator = () => {
     <Tab.Navigator
       screenOptions={({ route }) => ({
         headerShown: false,
+        freezeOnBlur: true,
         tabBarIcon: ({ color, focused }) => (
           <MainTabIcon color={color} focused={focused} routeName={route.name} />
         ),
@@ -251,20 +275,31 @@ export const RootNavigator = () => {
         component={UtilitiesScreen}
         options={{ title: 'Tiện ích', headerShown: false }}
       />
-      <Stack.Screen
-        name="Football"
-        component={FootballScreen}
-        options={{ title: 'Bóng đá', headerShown: false }}
-      />
+
       <Stack.Screen
         name="Finance"
         component={FinanceScreen}
         options={{ title: 'Tài chính', headerShown: false }}
       />
       <Stack.Screen
-        name="Lottery"
-        component={LotteryScreen}
-        options={{ title: 'Xổ số', headerShown: false }}
+        name="DayCounter"
+        component={DayCounterScreen}
+        options={{ title: 'Đếm ngày', headerShown: false }}
+      />
+      <Stack.Screen
+        name="Reminders"
+        component={RemindersScreen}
+        options={{ title: 'Nhắc việc', headerShown: false }}
+      />
+      <Stack.Screen
+        name="QuickConverter"
+        component={QuickConverterScreen}
+        options={{ title: 'Chuyển đổi', headerShown: false }}
+      />
+      <Stack.Screen
+        name="QuickCalculator"
+        component={QuickCalculatorScreen}
+        options={{ title: 'Máy tính', headerShown: false }}
       />
       <Stack.Screen
         name="Weather"

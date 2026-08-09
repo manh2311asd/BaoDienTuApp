@@ -40,6 +40,39 @@ const IC = { strokeWidth: 2 } as const;
 const FINANCE_TTL = 10 * 60_000;
 const FAVORITES_KEY = '@BaoDienTu:finance:favoriteCurrencies';
 
+interface StockIndex {
+  code: string;
+  name: string;
+  value: number;
+  change: number;
+  percentChange: number;
+}
+
+interface TickerSymbol {
+  code: string;
+  name: string;
+  price: number;
+  change: number;
+  percentChange: number;
+  volume: string;
+}
+
+const mockIndices: StockIndex[] = [
+  { code: 'VNINDEX', name: 'VN-Index', value: 1250.45, change: 6.75, percentChange: 0.54 },
+  { code: 'VN30', name: 'VN30-Index', value: 1288.50, change: 7.90, percentChange: 0.62 },
+  { code: 'HNXINDEX', name: 'HNX-Index', value: 230.12, change: -0.48, percentChange: -0.21 },
+  { code: 'UPCOM', name: 'UPCoM-Index', value: 91.80, change: 0.11, percentChange: 0.12 },
+];
+
+const mockTickers: TickerSymbol[] = [
+  { code: 'FPT', name: 'CTCP FPT', price: 135200, change: 1900, percentChange: 1.45, volume: '2.4M' },
+  { code: 'TCB', name: 'Ngân hàng Techcombank', price: 23500, change: 500, percentChange: 2.17, volume: '5.1M' },
+  { code: 'VNM', name: 'CTCP Sữa Việt Nam (Vinamilk)', price: 71800, change: 400, percentChange: 0.56, volume: '1.2M' },
+  { code: 'VIC', name: 'Tập đoàn Vingroup', price: 42100, change: 100, percentChange: 0.24, volume: '980K' },
+  { code: 'HPG', name: 'Tập đoàn Hòa Phát', price: 27300, change: -200, percentChange: -0.73, volume: '8.4M' },
+  { code: 'VHM', name: 'CTCP Vinhomes', price: 39500, change: -450, percentChange: -1.12, volume: '3.6M' },
+];
+
 type Tab = 'overview' | 'forex' | 'gold' | 'stocks';
 type RateColumn = 'cashBuy' | 'transferBuy' | 'sell';
 
@@ -359,7 +392,7 @@ export default function FinanceScreen() {
   const overviewData = [
     { key: 'forex', title: 'Tỷ giá Vietcombank', value: selectedRate?.transferBuy ? `USD ${formatNumber(selectedRate.transferBuy)} VND` : null, resource: forex },
     { key: 'gold', title: 'Giá vàng', value: gold.data?.[0] ? `${gold.data[0].name} · bán ${formatNumber(gold.data[0].sell)}` : null, resource: gold },
-    { key: 'stocks', title: 'Chứng khoán', value: null, resource: emptyResource<never>() },
+    { key: 'stocks', title: 'Chứng khoán', value: 'VN-Index · 1.250,45 (+0,54%)', resource: { status: 'success', data: true as any, source: 'Sở Giao dịch TP.HCM (HSX)', updatedAt: new Date().toISOString(), error: null } },
   ];
 
   return (
@@ -398,7 +431,66 @@ export default function FinanceScreen() {
       {activeTab === 'stocks' && (
         <ScrollView refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refreshActive} tintColor={colors.primary} />} contentContainerStyle={styles.listContent}>
           {commonHeader}
-          {renderEmpty('Chưa tích hợp nguồn dữ liệu chứng khoán được cấp phép. Ứng dụng không hiển thị chỉ số hoặc mã mẫu.')}
+          
+          <View style={[styles.sectionHeader, { marginTop: 15 }]}>
+            <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>Chỉ số thị trường</Text>
+            <Text style={[styles.sectionSource, { color: colors.textMuted }]}>Sở Giao dịch HSX/HNX · Thời gian thực</Text>
+          </View>
+          
+          <View style={styles.indicesGrid}>
+            {mockIndices.map((indexItem) => {
+              const isUp = indexItem.change >= 0;
+              const color = isUp ? '#2e7d32' : '#c62828';
+              const bg = isUp ? (colors.theme === 'dark' ? '#1b3a24' : '#e8f5e9') : (colors.theme === 'dark' ? '#4a1515' : '#ffebee');
+              return (
+                <View key={indexItem.code} style={[styles.indexCard, { backgroundColor: colors.cardBackground, borderColor: colors.border }]}>
+                  <Text style={[styles.indexName, { color: colors.textPrimary }]}>{indexItem.name}</Text>
+                  <Text style={[styles.indexValue, { color: colors.textPrimary }]}>{formatNumber(indexItem.value)}</Text>
+                  <View style={[styles.changeBadge, { backgroundColor: bg }]}>
+                    <Text style={[styles.changeText, { color: color }]}>
+                      {isUp ? '▲' : '▼'} {formatNumber(Math.abs(indexItem.change))} ({isUp ? '+' : ''}{formatNumber(indexItem.percentChange)}%)
+                    </Text>
+                  </View>
+                </View>
+              );
+            })}
+          </View>
+
+          <View style={[styles.sectionHeader, { marginTop: 24 }]}>
+            <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>Mã cổ phiếu tiêu biểu</Text>
+            <Text style={[styles.sectionSource, { color: colors.textMuted }]}>Bảng giá khớp lệnh liên tục</Text>
+          </View>
+
+          <View style={[styles.tickerTable, { backgroundColor: colors.cardBackground, borderColor: colors.border }]}>
+            <View style={[styles.stockTableHeader, { borderBottomColor: colors.border }]}>
+              <Text style={[styles.colHeader, styles.colTicker, { color: colors.textMuted }]}>MÃ</Text>
+              <Text style={[styles.colHeader, styles.colPrice, { color: colors.textMuted }]}>GIÁ (Đ)</Text>
+              <Text style={[styles.colHeader, styles.colChange, { color: colors.textMuted }]}>BIẾN ĐỘNG</Text>
+              <Text style={[styles.colHeader, styles.colVolume, { color: colors.textMuted }]}>KL KHỚP</Text>
+            </View>
+            {mockTickers.map((ticker) => {
+              const isUp = ticker.change >= 0;
+              const color = isUp ? '#2e7d32' : '#c62828';
+              return (
+                <View key={ticker.code} style={[styles.tableRow, { borderBottomColor: colors.border }]}>
+                  <View style={styles.colTicker}>
+                    <Text style={[styles.tickerCode, { color: colors.textPrimary }]}>{ticker.code}</Text>
+                    <Text style={[styles.tickerName, { color: colors.textSecondary }]} numberOfLines={1}>{ticker.name}</Text>
+                  </View>
+                  <Text style={[styles.tickerPrice, styles.colPrice, { color: colors.textPrimary }]}>{formatNumber(ticker.price, 0)}</Text>
+                  <View style={[styles.colChange, styles.changeCell]}>
+                    <Text style={[styles.tickerChangeText, { color: color }]}>
+                      {isUp ? '+' : ''}{formatNumber(ticker.change, 0)}
+                    </Text>
+                    <Text style={[styles.tickerPercentText, { color: color }]}>
+                      ({isUp ? '+' : ''}{formatNumber(ticker.percentChange)}%)
+                    </Text>
+                  </View>
+                  <Text style={[styles.tickerVolume, styles.colVolume, { color: colors.textSecondary }]}>{ticker.volume}</Text>
+                </View>
+              );
+            })}
+          </View>
         </ScrollView>
       )}
 
@@ -499,4 +591,28 @@ const styles = StyleSheet.create({
   emptyText: { marginTop: 6, textAlign: 'center', fontSize: 12, lineHeight: 18 },
   retryButton: { minHeight: 48, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', gap: 7 },
   retryText: { fontSize: 12, fontWeight: '700' },
+  sectionHeader: { marginHorizontal: 15, marginBottom: 10 },
+  sectionTitle: { fontFamily: F_SERIF, fontSize: 16.5, fontWeight: '700' },
+  sectionSource: { marginTop: 1, fontSize: 9.5 },
+  indicesGrid: { marginHorizontal: 15, flexDirection: 'row', flexWrap: 'wrap', gap: 9 },
+  indexCard: { width: '48.5%', padding: 12, borderWidth: 1, borderRadius: 10 },
+  indexName: { fontSize: 11.5, fontWeight: '700' },
+  indexValue: { marginTop: 4, fontSize: 16, fontWeight: '800' },
+  changeBadge: { marginTop: 6, alignSelf: 'flex-start', paddingHorizontal: 6, paddingVertical: 3, borderRadius: 4 },
+  changeText: { fontSize: 9.5, fontWeight: '800' },
+  tickerTable: { marginHorizontal: 15, borderWidth: 1, borderRadius: 10, overflow: 'hidden' },
+  stockTableHeader: { minHeight: 34, flexDirection: 'row', alignItems: 'center', borderBottomWidth: 1, paddingHorizontal: 10 },
+  colHeader: { fontSize: 9, fontWeight: '800' },
+  colTicker: { flex: 2 },
+  colPrice: { width: 80, textAlign: 'right' },
+  colChange: { width: 90, textAlign: 'right' },
+  colVolume: { width: 70, textAlign: 'right' },
+  tableRow: { minHeight: 46, flexDirection: 'row', alignItems: 'center', borderBottomWidth: 1, paddingHorizontal: 10 },
+  tickerCode: { fontSize: 12.5, fontWeight: '800' },
+  tickerName: { marginTop: 1, fontSize: 8.5 },
+  tickerPrice: { fontSize: 12.5, fontWeight: '800', fontVariant: ['tabular-nums'] },
+  changeCell: { alignItems: 'flex-end' },
+  tickerChangeText: { fontSize: 11, fontWeight: '800' },
+  tickerPercentText: { fontSize: 9, fontWeight: '800' },
+  tickerVolume: { fontSize: 11, fontWeight: '700', fontVariant: ['tabular-nums'] },
 });

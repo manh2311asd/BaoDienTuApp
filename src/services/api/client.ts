@@ -18,10 +18,7 @@ import { useAppStore, UserSession } from '../../store/useAppStore';
 import { clearStoredSession } from '../sessionStorage';
 import {
   ExchangeRate,
-  FootballMatch,
-  FootballStanding,
   GoldPrice,
-  LotteryDraw,
   UtilityEnvelope,
 } from '../../types/utilities';
 
@@ -165,18 +162,21 @@ export const apiClient = {
     }
   },
 
-  searchArticles: async (params: {
-    keyword?: string;
-    categoryId?: number;
-    authorName?: string;
-    authorId?: number;
-    sourceName?: string;
-    origin?: 'INTERNAL' | 'EXTERNAL';
-    page?: number;
-    size?: number;
-  }): Promise<ApiResponse<Article[] | PaginatedResponse<Article>>> => {
+  searchArticles: async (
+    params: {
+      keyword?: string;
+      categoryId?: number;
+      authorName?: string;
+      authorId?: number;
+      sourceName?: string;
+      origin?: 'INTERNAL' | 'EXTERNAL';
+      page?: number;
+      size?: number;
+    },
+    config?: any
+  ): Promise<ApiResponse<Article[] | PaginatedResponse<Article>>> => {
     try {
-      const res = await api.get('/api/articles/search', { params });
+      const res = await api.get('/api/articles/search', { params, ...config });
 
       const isPaginated = res.data && typeof res.data === 'object' && 'content' in res.data;
       const rawList = isPaginated ? res.data.content : res.data;
@@ -874,52 +874,7 @@ export const apiClient = {
     }
   },
 
-  getFootballMatches: async (params: {
-    dateFrom: string;
-    dateTo: string;
-    competition?: string;
-  }): Promise<ApiResponse<UtilityEnvelope<FootballMatch[]>>> => {
-    try {
-      const res = await api.get('/api/utilities/football/matches', { params });
-      return { data: res.data, status: res.status };
-    } catch (e: any) {
-      if (e.response?.status === 503) {
-        throw new Error('Nguồn Bóng đá chưa được cấu hình trên server');
-      }
-      if (e.response?.status >= 500) {
-        throw new Error('Nguồn Bóng đá hiện chưa khả dụng');
-      }
-      throw new Error(
-        e.response?.data?.detail ||
-          e.response?.data?.message ||
-          e.message ||
-          'Không thể cập nhật Bóng đá'
-      );
-    }
-  },
 
-  getFootballStandings: async (params: {
-    competition: string;
-    season?: number;
-  }): Promise<ApiResponse<UtilityEnvelope<FootballStanding[]>>> => {
-    try {
-      const res = await api.get('/api/utilities/football/standings', { params });
-      return { data: res.data, status: res.status };
-    } catch (e: any) {
-      if (e.response?.status === 503) {
-        throw new Error('Nguồn Bóng đá chưa được cấu hình trên server');
-      }
-      if (e.response?.status >= 500) {
-        throw new Error('Nguồn Bóng đá hiện chưa khả dụng');
-      }
-      throw new Error(
-        e.response?.data?.detail ||
-          e.response?.data?.message ||
-          e.message ||
-          'Không thể cập nhật bảng xếp hạng'
-      );
-    }
-  },
 
   getExchangeRates: async (): Promise<
     ApiResponse<UtilityEnvelope<ExchangeRate[]>>
@@ -950,30 +905,6 @@ export const apiClient = {
     }
   },
 
-  getLotteryDraw: async (params: {
-    region: LotteryDraw['region'];
-    province?: string;
-    drawDate: string;
-    lotteryType?: string;
-  }): Promise<ApiResponse<UtilityEnvelope<LotteryDraw>>> => {
-    try {
-      const res = await api.get('/api/utilities/lottery', { params });
-      return { data: res.data, status: res.status };
-    } catch (e: any) {
-      if (e.response?.status === 503) {
-        throw new Error('Nguồn Xổ số chưa được cấu hình trên server');
-      }
-      if (e.response?.status >= 500) {
-        throw new Error('Nguồn Xổ số hiện chưa khả dụng');
-      }
-      throw new Error(
-        e.response?.data?.detail ||
-          e.response?.data?.message ||
-          e.message ||
-          'Không thể cập nhật kết quả Xổ số'
-      );
-    }
-  },
 
   getGoldPrices: async (): Promise<
     ApiResponse<UtilityEnvelope<GoldPrice[]>>
