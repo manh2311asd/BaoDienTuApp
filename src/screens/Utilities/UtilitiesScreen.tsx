@@ -21,7 +21,6 @@ import {
 import solarLunar from 'solarlunar';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAppStore } from '../../store/useAppStore';
-import { appTheme } from '../../theme/colors';
 
 const F_SERIF = Platform.select({ ios: 'Georgia', android: 'serif', default: 'serif' });
 const IC = { strokeWidth: 2 } as const;
@@ -30,7 +29,6 @@ export default function UtilitiesScreen() {
   const navigation = useNavigation<any>();
   const isFocused = useIsFocused();
   const themeMode = useAppStore((state) => state.themeMode);
-  const shell = appTheme[themeMode];
   const dark = themeMode === 'dark';
 
   const today = new Date();
@@ -49,7 +47,6 @@ export default function UtilitiesScreen() {
   const surfaceBg = dark ? '#211D1A' : '#FFFDF9';
   const textPrimary = dark ? '#F4EEE8' : '#29231F';
   const textSecondary = dark ? '#C1B7AE' : '#746D66';
-  const accentColor = dark ? '#E58570' : '#C65F4D';
   const borderColor = dark ? 'rgba(255, 255, 255, 0.10)' : '#E4DCD2';
 
   // Backdrop colors for container blocks
@@ -74,18 +71,16 @@ export default function UtilitiesScreen() {
   const calculatorAccent = dark ? '#D9B264' : '#CA8A04';
 
   useEffect(() => {
-    if (isFocused) {
-      loadDynamicStats();
-    }
-  }, [isFocused]);
+    if (!isFocused) return;
 
-  const loadDynamicStats = async () => {
-    try {
+    const loadDynamicStats = async () => {
+      try {
       // 1. Load reminders
       const rawReminders = await AsyncStorage.getItem('@BaoDienTu:utilities:reminders');
       if (rawReminders) {
         const reminders = JSON.parse(rawReminders);
-        const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+        const currentDate = new Date();
+        const todayStr = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-${String(currentDate.getDate()).padStart(2, '0')}`;
         const todayItems = reminders.filter((r: any) => r.date === todayStr);
         setTodayRemindersCount(todayItems.length);
       } else {
@@ -118,10 +113,13 @@ export default function UtilitiesScreen() {
       } else {
         setClosestCounter(null);
       }
-    } catch (e) {
-      console.error(e);
-    }
-  };
+      } catch (e) {
+        console.error(e);
+      }
+    };
+
+    loadDynamicStats();
+  }, [isFocused]);
 
   const dayNames = [
     'Chủ nhật',

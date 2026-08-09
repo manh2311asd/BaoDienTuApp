@@ -4,7 +4,6 @@ import {
   View,
   Text,
   FlatList,
-  Pressable,
   Image,
   TouchableOpacity,
   ActivityIndicator,
@@ -33,7 +32,7 @@ const getPastelColor = (name?: string) => {
   if (!name) return '#F1EBE4';
   let hash = 0;
   for (let i = 0; i < name.length; i++) {
-    hash = name.charCodeAt(i) + ((hash << 5) - hash);
+    hash = (hash * 31 + name.charCodeAt(i)) % 2147483647;
   }
   const pastelColors = [
     '#F7DED3', // Accent Container
@@ -48,7 +47,7 @@ const getPastelColor = (name?: string) => {
 };
 
 const mapRoleLabel = (role?: string) => {
-  if (!role) return 'Thành viên The Daily';
+  if (!role) return 'Thành viên NewsDaily';
   switch (role.toUpperCase()) {
     case 'ADMIN':
       return 'Quản trị viên';
@@ -60,7 +59,7 @@ const mapRoleLabel = (role?: string) => {
       return 'Thành viên VIP';
     case 'MEMBER':
     default:
-      return 'Thành viên The Daily';
+      return 'Thành viên NewsDaily';
   }
 };
 
@@ -257,7 +256,7 @@ export default function PublicUserProfileScreen() {
         <ChatCircleText size={48} color="#999088" weight="light" />
         <Text style={styles.emptyTitle}>Chưa có bình luận</Text>
         <Text style={styles.emptySubtitle}>
-          Người dùng này chưa tham gia thảo luận trên The Daily.
+          Người dùng này chưa tham gia thảo luận trên NewsDaily.
         </Text>
       </View>
     );

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   StyleSheet,
   View,
@@ -100,6 +100,18 @@ const SPEED_FACTORS: Record<string, number> = {
   mph: 1.609344,
 };
 
+const convertTemperature = (val: number, from: string, to: string): number => {
+  let tempC = 0;
+  if (from === 'C') tempC = val;
+  else if (from === 'F') tempC = ((val - 32) * 5) / 9;
+  else if (from === 'K') tempC = val - 273.15;
+
+  if (to === 'C') return tempC;
+  if (to === 'F') return (tempC * 9) / 5 + 32;
+  if (to === 'K') return tempC + 273.15;
+  return val;
+};
+
 export default function QuickConverterScreen() {
   const navigation = useNavigation<any>();
   const insets = useSafeAreaInsets();
@@ -133,12 +145,7 @@ export default function QuickConverterScreen() {
     }
   }, [category]);
 
-  // Recalculate result
-  useEffect(() => {
-    performConversion();
-  }, [inputValue, fromUnit, toUnit, category]);
-
-  const performConversion = () => {
+  const performConversion = useCallback(() => {
     const num = parseFloat(inputValue);
     if (isNaN(num)) {
       setResult('---');
@@ -178,19 +185,11 @@ export default function QuickConverterScreen() {
     } else {
       setResult(String(Number(calculated.toFixed(6))));
     }
-  };
+  }, [category, fromUnit, inputValue, toUnit]);
 
-  const convertTemperature = (val: number, from: string, to: string): number => {
-    let tempC = 0;
-    if (from === 'C') tempC = val;
-    else if (from === 'F') tempC = ((val - 32) * 5) / 9;
-    else if (from === 'K') tempC = val - 273.15;
-
-    if (to === 'C') return tempC;
-    else if (to === 'F') return (tempC * 9) / 5 + 32;
-    else if (to === 'K') return tempC + 273.15;
-    return val;
-  };
+  useEffect(() => {
+    performConversion();
+  }, [performConversion]);
 
   const handleSwap = () => {
     const temp = fromUnit;

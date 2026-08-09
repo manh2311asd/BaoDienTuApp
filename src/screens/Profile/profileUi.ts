@@ -38,6 +38,12 @@ export const getMembershipDisplay = (
         formattedExpiry,
       };
     }
+    return {
+      state: 'active',
+      label: 'HẠN THÀNH VIÊN',
+      value: formattedExpiry || 'Đang hoạt động',
+      formattedExpiry,
+    };
   }
 
   if (role === 'VIP') {

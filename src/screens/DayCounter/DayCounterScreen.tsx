@@ -5,13 +5,12 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
-  FlatList,
   Platform,
   Alert,
   Share,
   ScrollView,
 } from 'react-native';
-import { ArrowLeft, Plus, Trash2, Calendar, Share2, Bell } from 'lucide-react-native';
+import { ArrowLeft, Share2, Bell } from 'lucide-react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';

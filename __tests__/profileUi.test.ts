@@ -29,6 +29,17 @@ describe('profile presentation helpers', () => {
     expect(result.formattedExpiry).toBeTruthy();
   });
 
+  it('recognizes a paid member from the active expiry even when the base role remains MEMBER', () => {
+    const result = getMembershipDisplay(
+      'MEMBER',
+      '2027-07-25',
+      new Date('2026-08-05T12:00:00+07:00')
+    );
+    expect(result.state).toBe('active');
+    expect(result.label).toBe('HẠN THÀNH VIÊN');
+    expect(result.formattedExpiry).toBeTruthy();
+  });
+
   it('only displays genuine in-progress reading values', () => {
     expect(normalizeReadingProgress(0.42)).toBe(42);
     expect(normalizeReadingProgress(67)).toBe(67);

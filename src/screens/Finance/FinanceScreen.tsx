@@ -441,7 +441,7 @@ export default function FinanceScreen() {
             {mockIndices.map((indexItem) => {
               const isUp = indexItem.change >= 0;
               const color = isUp ? '#2e7d32' : '#c62828';
-              const bg = isUp ? (colors.theme === 'dark' ? '#1b3a24' : '#e8f5e9') : (colors.theme === 'dark' ? '#4a1515' : '#ffebee');
+              const bg = isUp ? (themeMode === 'dark' ? '#1b3a24' : '#e8f5e9') : (themeMode === 'dark' ? '#4a1515' : '#ffebee');
               return (
                 <View key={indexItem.code} style={[styles.indexCard, { backgroundColor: colors.cardBackground, borderColor: colors.border }]}>
                   <Text style={[styles.indexName, { color: colors.textPrimary }]}>{indexItem.name}</Text>

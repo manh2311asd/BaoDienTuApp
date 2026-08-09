@@ -22,7 +22,7 @@ import {
   UtilityEnvelope,
 } from '../../types/utilities';
 
-const DEFAULT_DEVELOPMENT_API_URL = 'http://172.18.61.23:8082';
+const DEFAULT_DEVELOPMENT_API_URL = 'http://10.0.2.2:8082';
 export const BASE_URL =
   process.env.EXPO_PUBLIC_API_URL?.trim() || DEFAULT_DEVELOPMENT_API_URL;
 
@@ -172,15 +172,6 @@ export interface ApiResponse<T> {
   message?: string;
 }
 
-export interface PaginatedResponse<T> {
-  content: T[];
-  page: number;
-  size: number;
-  totalElements: number;
-  totalPages: number;
-  last: boolean;
-}
-
 export const apiClient = {
   // Authentication
   login: async (email: string, password_plain: string): Promise<ApiResponse<UserSession>> => {
@@ -277,12 +268,14 @@ export const apiClient = {
         return {
           data: {
             content: mapped,
-            page: res.data.page,
-            size: res.data.size,
-            totalElements: res.data.totalElements,
-            totalPages: res.data.totalPages,
-            last: res.data.last,
-          } as PaginatedResponse<Article>,
+            page: Number(res.data.number ?? res.data.page ?? params.page ?? 0),
+            size: Number(res.data.size ?? params.size ?? mapped.length),
+            totalElements: Number(res.data.totalElements ?? mapped.length),
+            totalPages: Number(res.data.totalPages ?? 1),
+            hasNext: res.data.last !== undefined
+              ? !res.data.last
+              : Number(res.data.number ?? res.data.page ?? params.page ?? 0) + 1 < Number(res.data.totalPages ?? 1),
+          },
           status: res.status,
         };
       }
