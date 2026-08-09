@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   StyleSheet,
   View,
@@ -64,6 +64,10 @@ export default function PressReviewScreen({ navigation }: any) {
   const [hasMore, setHasMore] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Refs for request cancellation
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const requestId = useRef(0);
+
   // Filters
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
@@ -72,6 +76,14 @@ export default function PressReviewScreen({ navigation }: any) {
   const [selectedTopic, setSelectedTopic] = useState<string | null>(null);
   const [showTopicPicker, setShowTopicPicker] = useState(false);
 
+  // Split Articles into Hero (1st) and Compact (rest)
+  const { heroArticle, listArticles } = useMemo(() => {
+    return {
+      heroArticle: articles.length > 0 ? articles[0] : null,
+      listArticles: articles.length > 1 ? articles.slice(1) : [],
+    };
+  }, [articles]);
+
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedQuery(searchQuery.trim()), 400);
     return () => clearTimeout(timer);
@@ -79,6 +91,14 @@ export default function PressReviewScreen({ navigation }: any) {
 
   const fetchPressArticles = useCallback(
     async (isRefresh = false) => {
+      const currentRequestId = ++requestId.current;
+
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+      const controller = new AbortController();
+      abortControllerRef.current = controller;
+
       if (isRefresh) {
         setRefreshing(true);
         setPage(0);
@@ -106,7 +126,10 @@ export default function PressReviewScreen({ navigation }: any) {
           queryParams.keyword = selectedTopic;
         }
 
-        const response = await apiClient.searchArticles(queryParams);
+        const response = await apiClient.searchArticles(queryParams, {
+          signal: controller.signal
+        });
+        if (currentRequestId !== requestId.current) return;
         const responseData = response.data;
 
         if (!Array.isArray(responseData)) {
@@ -120,11 +143,19 @@ export default function PressReviewScreen({ navigation }: any) {
           setTotalPages(1);
           setHasMore(false);
         }
-      } catch (err) {
-        setError('Không thể tải tin điểm báo. Vui lòng thử lại sau.');
+      } catch (err: any) {
+        if (err?.name === 'CanceledError' || err?.message === 'canceled') {
+          return;
+        }
+        console.warn('[PressReviewScreen API Error]', err?.message || err);
+        if (currentRequestId === requestId.current) {
+          setError('Không thể tải tin điểm báo. Vui lòng thử lại sau.');
+        }
       } finally {
-        setLoading(false);
-        setRefreshing(false);
+        if (currentRequestId === requestId.current) {
+          setLoading(false);
+          setRefreshing(false);
+        }
       }
     },
     [debouncedQuery, selectedSource, sortTab, selectedTopic]
@@ -135,6 +166,7 @@ export default function PressReviewScreen({ navigation }: any) {
   }, [fetchPressArticles]);
 
   const handleRefresh = () => {
+    if (refreshing) return;
     fetchPressArticles(true);
   };
 
@@ -315,12 +347,17 @@ export default function PressReviewScreen({ navigation }: any) {
   };
 
   const renderHeader = () => {
-    const heroArticle = articles.length > 0 ? articles[0] : null;
     const isHeroBookmarked = heroArticle ? bookmarkedIds.includes(heroArticle.id) : false;
     const heroSrcColors = heroArticle ? getSourceColors(heroArticle.sourceName) : { bg: theme.primaryContainer, text: theme.primary };
 
     return (
       <View>
+        {error && articles.length > 0 ? (
+          <View style={[styles.inlineWarning, { backgroundColor: theme.primaryContainer, borderColor: theme.border }]}>
+            <WifiOff color={theme.primary} size={15} />
+            <Text style={[styles.inlineWarningText, { color: theme.textPrimary }]}>Không thể cập nhật tin điểm báo. Nội dung gần nhất vẫn được giữ lại.</Text>
+          </View>
+        ) : null}
         <Text style={[styles.subtitle, { color: theme.textSecondary }]}>
           Tổng hợp đường dẫn tin mới từ các nguồn báo khác.
         </Text>
@@ -566,7 +603,7 @@ export default function PressReviewScreen({ navigation }: any) {
         <View style={styles.center}>
           <ActivityIndicator size="large" color={theme.primary} />
         </View>
-      ) : error ? (
+      ) : error && articles.length === 0 ? (
         <View style={styles.center}>
           <WifiOff color={theme.textSecondary} size={36} />
           <Text style={[styles.emptyTitle, { color: theme.textPrimary }]}>Không thể tải tin điểm báo</Text>
@@ -588,7 +625,7 @@ export default function PressReviewScreen({ navigation }: any) {
         </View>
       ) : (
         <FlatList
-          data={articles.slice(1)} // Hero article is articles[0]
+          data={listArticles} // Hero article is articles[0]
           keyExtractor={(item) => item.id.toString()}
           refreshing={refreshing}
           onRefresh={handleRefresh}
@@ -880,5 +917,20 @@ const styles = StyleSheet.create({
   groupCount: {
     fontSize: 12,
     fontFamily: F_SANS,
+  },
+  inlineWarning: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 10,
+    marginHorizontal: 16,
+    marginTop: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    gap: 8,
+  },
+  inlineWarningText: {
+    fontSize: 12,
+    fontFamily: F_SANS,
+    flex: 1,
   },
 });

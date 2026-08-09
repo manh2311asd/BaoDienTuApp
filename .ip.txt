@@ -1,0 +1,18 @@
+[
+  {
+    "interface": "Ethernet 5",
+    "ip": "192.168.56.1"
+  },
+  {
+    "interface": "Ethernet 6",
+    "ip": "192.168.56.2"
+  },
+  {
+    "interface": "Wi-Fi",
+    "ip": "192.168.1.13"
+  },
+  {
+    "interface": "Wi-Fi 2",
+    "ip": "192.168.1.12"
+  }
+]

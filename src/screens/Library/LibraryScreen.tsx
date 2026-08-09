@@ -132,9 +132,10 @@ export default function LibraryScreen({ navigation, route }: any) {
       });
       return;
     }
+    const isDownloaded = offlineIds.includes(article.id);
     navigation.navigate('ArticleDetail', {
       articleId: article.id,
-      isOffline: section === 'downloaded',
+      isOffline: section === 'downloaded' || isDownloaded,
       articleType: article.type,
     });
   };

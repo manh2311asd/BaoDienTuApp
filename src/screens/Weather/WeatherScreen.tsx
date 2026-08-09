@@ -116,17 +116,22 @@ const WeatherScreen = ({ navigation }: any) => {
         const { status } = await Location.requestForegroundPermissionsAsync();
         if (status === 'granted') {
           try {
+            let timerId: any = null;
             const loc = await Promise.race([
               Location.getCurrentPositionAsync({
                 accuracy: Location.Accuracy.Balanced,
               }),
               new Promise<never>((_, reject) => {
-                setTimeout(
+                timerId = setTimeout(
                   () => reject(new Error('Location request timed out')),
                   5000
                 );
               }),
-            ]);
+            ]).finally(() => {
+              if (timerId) {
+                clearTimeout(timerId);
+              }
+            });
             lat = loc.coords.latitude;
             lon = loc.coords.longitude;
             const geo = await Location.reverseGeocodeAsync({ latitude: lat, longitude: lon });

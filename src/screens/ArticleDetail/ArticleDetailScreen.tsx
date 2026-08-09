@@ -12,6 +12,7 @@ import {
   Linking,
   Platform,
   Keyboard,
+  InteractionManager,
 } from 'react-native';
 import RenderHtml from 'react-native-render-html';
 import { useAppStore } from '../../store/useAppStore';
@@ -59,6 +60,7 @@ export default function ArticleDetailScreen({ route, navigation }: any) {
     toggleBookmark,
     user,
     wifiOnlyDownloads,
+    offlineIds,
   } = useAppStore();
   const colors = getColors();
   const shell = appTheme[themeMode];
@@ -305,6 +307,19 @@ export default function ArticleDetailScreen({ route, navigation }: any) {
           setError('Không thể tải bản xem trước của bài viết.');
         }
       } else {
+        const isDownloaded = offlineIds.includes(articleId);
+        if (isDownloaded) {
+          try {
+            const savedArticle = await localDB.getOfflineArticleDetail(articleId);
+            if (savedArticle) {
+              setArticle(savedArticle);
+              showToast('Đang đọc bản ngoại tuyến đã tải xuống');
+              return;
+            }
+          } catch (e) {
+            console.warn('Lỗi khi tải bản offline dự phòng:', e);
+          }
+        }
         setError(
           err instanceof Error
             ? err.message
@@ -314,7 +329,7 @@ export default function ArticleDetailScreen({ route, navigation }: any) {
     } finally {
       setLoading(false);
     }
-  }, [articleId, articleType, isOffline, loadVipPreview, readFullArticle]);
+  }, [articleId, articleType, isOffline, loadVipPreview, readFullArticle, offlineIds, showToast]);
 
   const handleConfirmVipRead = useCallback(async () => {
     setUnlockingVip(true);
@@ -447,8 +462,11 @@ export default function ArticleDetailScreen({ route, navigation }: any) {
   useEffect(() => {
     if (article && !isOffline) {
       localDB.saveRecentArticle(article);
-      fetchComments();
-      fetchRelatedArticles();
+      const task = InteractionManager.runAfterInteractions(() => {
+        fetchComments();
+        fetchRelatedArticles();
+      });
+      return () => task.cancel();
     } else if (isOffline) {
       setComments([]);
       setRelatedArticles([]);
@@ -525,6 +543,55 @@ export default function ArticleDetailScreen({ route, navigation }: any) {
     lastScrollY.current = currentY;
   };
 
+  const bodyMetrics = getArticleTextMetrics(
+    17,
+    27,
+    articleFontSize,
+    articleLineHeight
+  );
+  const sapoMetrics = getArticleTextMetrics(
+    16,
+    24,
+    articleFontSize,
+    articleLineHeight
+  );
+  const articleFont = getArticleFontFamily(articleFontFamily);
+  const bodyFontSize = bodyMetrics.fontSize;
+  const bodyLineHeight = bodyMetrics.lineHeight;
+
+  const htmlBaseStyle = React.useMemo(() => ({
+    color: colors.text,
+    fontFamily: articleFont,
+    fontSize: bodyFontSize,
+    lineHeight: bodyLineHeight,
+  }), [colors.text, articleFont, bodyFontSize, bodyLineHeight]);
+
+  const htmlTagsStyles = React.useMemo(() => ({
+    p: {
+      fontFamily: articleFont,
+      color: colors.text,
+      fontSize: bodyFontSize,
+      lineHeight: bodyLineHeight,
+      marginBottom: 16,
+    },
+    ol: {
+      fontFamily: articleFont,
+      color: colors.text,
+      fontSize: bodyFontSize,
+      marginBottom: 16,
+    },
+    li: {
+      fontFamily: articleFont,
+      fontSize: bodyFontSize,
+      lineHeight: bodyLineHeight,
+      marginBottom: 12,
+    },
+  }), [articleFont, colors.text, bodyFontSize, bodyLineHeight]);
+
+  const htmlSource = React.useMemo(() => ({
+    html: article?.content || article?.previewContent || ''
+  }), [article?.content, article?.previewContent]);
+
   if (loading) {
     return (
       <View style={styles.center}>
@@ -550,44 +617,6 @@ export default function ArticleDetailScreen({ route, navigation }: any) {
     outputRange: [0, 0, 1],
     extrapolate: 'clamp',
   });
-
-  const bodyMetrics = getArticleTextMetrics(
-    17,
-    27,
-    articleFontSize,
-    articleLineHeight
-  );
-  const sapoMetrics = getArticleTextMetrics(
-    16,
-    24,
-    articleFontSize,
-    articleLineHeight
-  );
-  const articleFont = getArticleFontFamily(articleFontFamily);
-  const bodyFontSize = bodyMetrics.fontSize;
-  const bodyLineHeight = bodyMetrics.lineHeight;
-
-  const tagsStyles = {
-    p: {
-      fontFamily: articleFont,
-      color: colors.text,
-      fontSize: bodyFontSize,
-      lineHeight: bodyLineHeight,
-      marginBottom: 16,
-    },
-    ol: {
-      fontFamily: articleFont,
-      color: colors.text,
-      fontSize: bodyFontSize,
-      marginBottom: 16,
-    },
-    li: {
-      fontFamily: articleFont,
-      fontSize: bodyFontSize,
-      lineHeight: bodyLineHeight,
-      marginBottom: 12,
-    },
-  };
 
   const remainingFreeReads = article.remainingFreeReads ?? 0;
   const paywallTitle =
@@ -764,17 +793,11 @@ export default function ArticleDetailScreen({ route, navigation }: any) {
 
           <View style={styles.divider} />
 
-          {/* Article Body Content with Images */}
           <RenderHtml
             contentWidth={width - 32}
-            source={{ html: article.content || article.previewContent || '' }}
-            baseStyle={{
-              color: colors.text,
-              fontFamily: articleFont,
-              fontSize: bodyFontSize,
-              lineHeight: bodyLineHeight,
-            }}
-            tagsStyles={tagsStyles as any}
+            source={htmlSource}
+            baseStyle={htmlBaseStyle}
+            tagsStyles={htmlTagsStyles as any}
             ignoredStyles={['fontSize', 'lineHeight']}
             ignoredDomTags={isOffline || !showImages ? ['img'] : []}
             enableExperimentalMarginCollapsing

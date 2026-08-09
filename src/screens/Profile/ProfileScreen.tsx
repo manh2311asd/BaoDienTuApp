@@ -821,7 +821,7 @@ export default function ProfileScreen() {
             {
               key: 'utilities',
               title: 'Tiện ích mỗi ngày',
-              supporting: 'Lịch, thể thao, tài chính và xổ số',
+              supporting: 'Lịch, nhắc việc và công cụ tính toán',
               icon: <LayoutGrid color={shell.appSageIcon} size={18} {...IC} />,
               iconBackground: shell.appSecondaryContainer,
               onPress: () => navigation.navigate('Utilities'),
