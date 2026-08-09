@@ -30,11 +30,6 @@ function autoDetectIp() {
     }
   }
   
-  // Write all found IPs to a temp file in the workspace
-  const ipLogPath = path.join(__dirname, '.ip.txt');
-  fs.writeFileSync(ipLogPath, JSON.stringify(allIps, null, 2), 'utf8');
-  console.log(`[AutoIP] Logged all IPs to ${ipLogPath}`);
-  
   // Select localIp
   let localIp = 'localhost';
   

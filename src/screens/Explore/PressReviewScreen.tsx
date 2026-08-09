@@ -181,7 +181,7 @@ export default function PressReviewScreen({ navigation }: any) {
           newArticles = responseData.content || [];
           setPage(0);
           setTotalPages(responseData.totalPages || 0);
-          setHasMore(!responseData.last);
+          setHasMore(responseData.hasNext);
         } else {
           newArticles = responseData;
           setPage(0);
@@ -282,7 +282,7 @@ export default function PressReviewScreen({ navigation }: any) {
           return merged;
         });
         setPage(nextPage);
-        setHasMore(Array.isArray(responseData) ? false : !responseData.last);
+        setHasMore(Array.isArray(responseData) ? false : responseData.hasNext);
       } else {
         setHasMore(false);
       }
@@ -293,7 +293,7 @@ export default function PressReviewScreen({ navigation }: any) {
     }
   };
 
-  const handleArticlePress = (item: Article) => {
+  const handleArticlePress = useCallback((item: Article) => {
     if (item.originalUrl?.trim()) {
       navigation.navigate('ArticleWebView', {
         url: item.originalUrl,
@@ -307,9 +307,9 @@ export default function PressReviewScreen({ navigation }: any) {
       articleId: item.id,
       articleType: item.type,
     });
-  };
+  }, [navigation]);
 
-  const handleBookmarkToggle = async (item: Article) => {
+  const handleBookmarkToggle = useCallback(async (item: Article) => {
     toggleBookmark(item.id);
     const isCurrentlyBookmarked = bookmarkedIds.includes(item.id);
     if (!isCurrentlyBookmarked) {
@@ -317,7 +317,7 @@ export default function PressReviewScreen({ navigation }: any) {
     } else {
       await localDB.deleteBookmarkedArticle(item.id);
     }
-  };
+  }, [bookmarkedIds, toggleBookmark]);
 
   const formatDate = (dateStr?: string) => {
     if (!dateStr) return 'Gần đây';
@@ -344,7 +344,7 @@ export default function PressReviewScreen({ navigation }: any) {
     }));
   };
 
-  const getSourceColors = (sourceName?: string) => {
+  const getSourceColors = useCallback((sourceName?: string) => {
     const s = (sourceName || '').toLowerCase();
     if (s.includes('vnexpress')) return { bg: '#FFE0DA', text: '#D95C50' }; // đỏ san hô
     if (s.includes('thanh niên') || s.includes('thanh nien')) return { bg: '#D5EEFA', text: '#165AA7' }; // xanh đậm
@@ -352,7 +352,7 @@ export default function PressReviewScreen({ navigation }: any) {
     if (s.includes('dân trí') || s.includes('dan tri')) return { bg: '#DDF4FF', text: '#278ABE' }; // xanh lam
     if (s.includes('vietnamnet')) return { bg: '#FFD6DB', text: '#A83547' }; // đỏ rượu
     return { bg: theme.primaryContainer, text: theme.primary };
-  };
+  }, [theme.primary, theme.primaryContainer]);
 
   const renderItemCard = (item: Article) => {
     const isBookmarked = bookmarkedIds.includes(item.id);
@@ -612,7 +612,7 @@ export default function PressReviewScreen({ navigation }: any) {
         )}
       </View>
     );
-  }, [error, articles, heroArticle, theme, fontSize, bookmarkedIds, selectedSource, sortTab, selectedTopic, showTopicPicker, debouncedQuery, handleArticlePress, handleBookmarkToggle]);
+  }, [error, articles, heroArticle, theme, fontSize, bookmarkedIds, selectedSource, sortTab, selectedTopic, showTopicPicker, debouncedQuery, handleArticlePress, handleBookmarkToggle, getSourceColors]);
 
   const renderGroupedSearch = () => {
     const groups = groupedArticles();

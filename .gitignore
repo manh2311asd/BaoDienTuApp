@@ -82,5 +82,6 @@ temp-dev-bundle*.js
 
 # Expo
 .expo
+.ip.txt
 dist/
 web-build/

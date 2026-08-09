@@ -68,7 +68,7 @@ const CompactArticleCard = React.memo(({
   homeSurface,
   colors,
   shell,
-  formatDate,
+  formatArticleDate,
 }: {
   item: Article;
   onPress: (item: Article) => void;
@@ -77,7 +77,7 @@ const CompactArticleCard = React.memo(({
   homeSurface: string;
   colors: any;
   shell: any;
-  formatDate: (d: string) => string;
+  formatArticleDate: (d: string) => string;
 }) => {
   return (
     <TouchableOpacity
@@ -116,7 +116,7 @@ const CompactArticleCard = React.memo(({
           )}
           <Text style={[styles.metaLabel, { color: shell.appPrimary }]}>{item.categoryName || 'Tin tức'}</Text>
           <Text style={[styles.metaDot, { color: colors.border }]}>·</Text>
-          <Text style={[styles.metaLabel, { color: colors.textMuted }]}>{formatDate(item.createdAt)}</Text>
+          <Text style={[styles.metaLabel, { color: colors.textMuted }]}>{formatArticleDate(item.createdAt)}</Text>
         </View>
       </View>
       {showImages && item.coverImage ? (
@@ -139,11 +139,11 @@ export default function HomeScreen({ navigation }: any) {
   const { fontSize, showImages, themeMode, user } = useAppStore();
   const dark = themeMode === 'dark';
   const shell = mainShellTheme[themeMode];
-  const colors = {
+  const colors = useMemo(() => ({
     text: shell.appTextPrimary,
     textMuted: shell.appTextSecondary,
     border: shell.appBorder,
-  };
+  }), [shell.appBorder, shell.appTextPrimary, shell.appTextSecondary]);
   const homeCanvas = shell.appBackground;
   const homeSurface = shell.appSurface;
   const homeHeader = shell.appHeader;
@@ -451,7 +451,7 @@ export default function HomeScreen({ navigation }: any) {
       homeSurface={homeSurface}
       colors={colors}
       shell={shell}
-      formatDate={formatDate}
+      formatArticleDate={formatDate}
     />
   ), [handleArticlePress, showImages, fontSize, homeSurface, colors, shell]);
 
@@ -783,17 +783,15 @@ export default function HomeScreen({ navigation }: any) {
     showImages,
     fontSize,
     navigation,
+    user,
     handleChipLayout,
-    scrollToChip,
   ]);
 
   // Split Articles into Hero (1st) and Compact (rest)
-  const { heroArticle, listArticles } = useMemo(() => {
-    return {
-      heroArticle: articles.length > 0 ? articles[0] : null,
-      listArticles: articles.length > 1 ? articles.slice(1) : [],
-    };
-  }, [articles]);
+  const listArticles = useMemo(
+    () => (articles.length > 1 ? articles.slice(1) : []),
+    [articles]
+  );
 
   return (
     <SafeAreaView

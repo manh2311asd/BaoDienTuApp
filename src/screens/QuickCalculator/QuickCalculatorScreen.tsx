@@ -31,7 +31,6 @@ export default function QuickCalculatorScreen() {
 
   // Styling based on Yellow theme
   const canvasBg = dark ? '#151411' : '#FCFAF5';
-  const cardBg = dark ? '#242014' : '#FAEDC5';
   const displayBg = dark ? '#211E18' : '#FAF6EC';
   const btnBg = dark ? '#2D281E' : '#F4ECD8';
   const accentColor = '#D4A017';

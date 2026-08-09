@@ -30,7 +30,7 @@ const getPastelColor = (name?: string) => {
   if (!name) return '#F1EBE4';
   let hash = 0;
   for (let i = 0; i < name.length; i++) {
-    hash = name.charCodeAt(i) + ((hash << 5) - hash);
+    hash = (hash * 31 + name.charCodeAt(i)) % 2147483647;
   }
   const pastelColors = [
     '#F7DED3', // Accent Container
