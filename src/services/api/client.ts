@@ -208,6 +208,7 @@ export const apiClient = {
         email,
         password: password_plain,
         confirmation: confirmation_plain || password_plain,
+        role: 'MEMBER',
       });
       return { data: undefined, status: 200 };
     } catch (e: any) {
