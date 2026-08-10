@@ -130,6 +130,14 @@ export interface VipPackage {
   description: string;
 }
 
+export interface DemoCardPayment {
+  transactionId: number;
+  paymentCode: string;
+  amount: number;
+  status: 'PENDING' | 'SUCCESS' | 'FAILED' | 'CANCELED';
+  vipExpiryDate?: string | null;
+}
+
 export interface Subscription {
   id: number;
   targetType: 'AUTHOR' | 'CATEGORY';

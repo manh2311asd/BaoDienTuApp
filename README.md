@@ -57,7 +57,8 @@ APK được tạo tại `android/app/build/outputs/apk/debug/app-debug.apk`. Đ
 ## Lưu ý tích hợp backend
 
 - JWT được giữ trong SecureStore; metadata hồ sơ và thiết lập giao diện nằm trong AsyncStorage. Avatar được lưu theo tài khoản trên backend và được khôi phục khi đăng nhập lại.
-- Phía ứng dụng chỉ mở URL thanh toán do API trả về. Quyền VIP phải được backend kích hoạt sau callback thanh toán thành công.
+- Với VNPay, ứng dụng chỉ mở URL do API trả về. Quyền VIP chỉ được backend kích hoạt sau callback thanh toán thành công.
+- Bản demo có thêm lựa chọn `Visa thử nghiệm`: bật `TMDT_DEMO_CARD_PAYMENT_ENABLED=true` ở backend, nhấn `Điền thẻ Visa mẫu`, sau đó xác nhận để tạo giao dịch và kích hoạt VIP. Thẻ mẫu là `4242 4242 4242 4242`, chủ thẻ `NGUYEN VAN LONG`, hết hạn `12/30`, CVV `123`. Không nhập thông tin thẻ thật; app không gửi các trường thẻ này tới backend.
 - API thời tiết/AQI dùng Open-Meteo; định vị chỉ được hỏi khi người dùng bật vị trí tự động.
 - Bài tải ngoại tuyến lưu phần chữ trên thiết bị và không tải ảnh từ mạng khi mở ở chế độ ngoại tuyến.
 - Trung tâm thông báo trong app lấy dữ liệu từ `/api/me/notifications`. Người dùng phải đăng nhập và chọn chủ đề quan tâm; bản hiện tại chưa gửi push notification ra thanh trạng thái hệ điều hành.

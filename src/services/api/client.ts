@@ -13,6 +13,7 @@ import {
   PublicUserProfile,
   UserCommentActivity,
   PaginatedResponse,
+  DemoCardPayment,
 } from '../../types/content';
 import { useAppStore, UserSession } from '../../store/useAppStore';
 import { clearStoredSession } from '../sessionStorage';
@@ -455,6 +456,36 @@ export const apiClient = {
       return { data: res.data, status: res.status };
     } catch (e: any) {
       throw new Error(e.response?.data?.message || e.message || 'Lỗi khởi tạo giao dịch');
+    }
+  },
+
+  createDemoCardPayment: async (
+    packageId: number
+  ): Promise<ApiResponse<DemoCardPayment>> => {
+    try {
+      const res = await api.post('/api/transactions/demo-card/create', { packageId });
+      return { data: res.data as DemoCardPayment, status: res.status };
+    } catch (e: any) {
+      throw new Error(
+        e.response?.data?.message || e.message || 'Không thể tạo giao dịch thử nghiệm'
+      );
+    }
+  },
+
+  confirmDemoCardPayment: async (
+    transactionId: number,
+    paymentCode: string
+  ): Promise<ApiResponse<DemoCardPayment>> => {
+    try {
+      const res = await api.post('/api/transactions/demo-card/confirm', {
+        transactionId,
+        paymentCode,
+      });
+      return { data: res.data as DemoCardPayment, status: res.status };
+    } catch (e: any) {
+      throw new Error(
+        e.response?.data?.message || e.message || 'Không thể xác nhận giao dịch thử nghiệm'
+      );
     }
   },
 
