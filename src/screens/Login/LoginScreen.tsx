@@ -94,6 +94,7 @@ export default function LoginScreen() {
         const res = await apiClient.login(email.trim(), password);
         setUser(res.data);
         await localDB.saveUserSession(res.data);
+        await localDB.syncCurrentUserLibrary();
       } else {
         await apiClient.register(name.trim(), email.trim(), password, confirm);
         switchMode('login');

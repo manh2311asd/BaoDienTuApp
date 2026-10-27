@@ -73,6 +73,38 @@ describe('localDB', () => {
     ).resolves.toEqual([]);
   });
 
+  it('tách bài đã lưu và bài offline giữa các tài khoản', async () => {
+    await localDB.saveBookmarkedArticle(article);
+    useAppStore.getState().toggleBookmark(article.id);
+    await localDB.saveArticleOffline(article);
+
+    useAppStore.setState({ user: { ...testUser, id: 78 } });
+    await localDB.syncCurrentUserLibrary();
+
+    expect(useAppStore.getState().bookmarkedIds).toEqual([]);
+    expect(useAppStore.getState().offlineIds).toEqual([]);
+    await expect(localDB.getBookmarkedArticles([article.id])).resolves.toEqual([]);
+    await expect(localDB.getOfflineArticles()).resolves.toEqual([]);
+
+    useAppStore.setState({ user: testUser });
+    await localDB.syncCurrentUserLibrary();
+    expect(useAppStore.getState().bookmarkedIds).toEqual([article.id]);
+    expect(useAppStore.getState().offlineIds).toEqual([article.id]);
+  });
+
+  it('không nhận dữ liệu bookmark và offline kiểu cũ không rõ chủ sở hữu', async () => {
+    await AsyncStorage.multiSet([
+      ['@BaoDienTu:offline_index', JSON.stringify([article.id])],
+      ['@BaoDienTu:offline_article:501', JSON.stringify(article)],
+      ['@BaoDienTu:bookmark_article:501', JSON.stringify(article)],
+    ]);
+
+    await localDB.syncCurrentUserLibrary();
+
+    expect(useAppStore.getState().bookmarkedIds).toEqual([]);
+    expect(useAppStore.getState().offlineIds).toEqual([]);
+  });
+
   it('giữ nguyên mã thiết bị giữa các lần đọc', async () => {
     const firstId = await localDB.getDeviceId();
     const secondId = await localDB.getDeviceId();

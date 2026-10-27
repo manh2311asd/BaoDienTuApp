@@ -21,6 +21,7 @@ export type VipPreviewAccessMode =
 
 export interface Article {
   id: number;
+  externalId?: string;
   authorId: number;
   authorName: string;
   coverImage: string;

@@ -133,17 +133,38 @@ export default function ProfileScreen() {
         setTopicCount(cached.topicCount);
       }
 
+      const applyRemoteAccount = async () => {
+        const account = await apiClient.getMyAccount();
+        const currentUser = useAppStore.getState().user;
+        if (!currentUser) return;
+
+        const updatedUser = {
+          ...currentUser,
+          ...account.data,
+          jwtToken: currentUser.jwtToken,
+        };
+        setUser(updatedUser);
+        await localDB.saveUserSession(updatedUser);
+      };
+
       const cacheFresh =
         cached && Date.now() - cached.savedAt < PROFILE_LOCAL_TTL;
       if (!force && cacheFresh) {
         setInitialLoading(false);
+        try {
+          await applyRemoteAccount();
+          setProfileDataError(false);
+        } catch {
+          setProfileDataError(true);
+        }
         return;
       }
 
       if (!cached) setInitialLoading(true);
       else if (!pullRefresh) setBackgroundFetching(true);
 
-      const [preferenceResult, subscriptionResult] = await Promise.allSettled([
+      const [accountResult, preferenceResult, subscriptionResult] = await Promise.allSettled([
+        apiClient.getMyAccount(),
         apiClient.getUserPreferences(),
         apiClient.getMySubscriptions(),
       ]);
@@ -152,8 +173,22 @@ export default function ProfileScreen() {
           ? preferenceResult.value.data.selectedTopics.length
           : cached?.topicCount ?? null;
       const remoteFailed =
+        accountResult.status === 'rejected' ||
         preferenceResult.status === 'rejected' ||
         subscriptionResult.status === 'rejected';
+
+      if (accountResult.status === 'fulfilled') {
+        const currentUser = useAppStore.getState().user;
+        if (currentUser) {
+          const updatedUser = {
+            ...currentUser,
+            ...accountResult.value.data,
+            jwtToken: currentUser.jwtToken,
+          };
+          setUser(updatedUser);
+          await localDB.saveUserSession(updatedUser);
+        }
+      }
 
       if (subscriptionResult.status === 'fulfilled') {
         setSubscriptions(subscriptionResult.value.data);
@@ -168,7 +203,7 @@ export default function ProfileScreen() {
       setInitialLoading(false);
       setBackgroundFetching(false);
     },
-    [setSubscriptions]
+    [setSubscriptions, setUser]
   );
 
   useFocusEffect(
@@ -282,19 +317,22 @@ export default function ProfileScreen() {
   const membership = getMembershipDisplay(user.role, user.vipExpiryDate);
   const hasActiveVip = membership.state === 'active';
   const hasStaffWorkspace = ['AUTHOR', 'CENSOR', 'ADMIN'].includes(user.role);
+  const canPurchaseVip = user.role === 'MEMBER' || user.role === 'VIP';
   const followedAuthorCount = subscriptions.filter(
     (item) => item.targetType === 'AUTHOR'
   ).length;
 
   const membershipStatus =
     membership.state === 'expired'
-      ? 'Đã hết hạn'
+      ? 'VIP đã hết hạn'
       : membership.state === 'active'
-        ? 'VIP đang hoạt động'
-        : 'Chưa đăng ký';
+        ? 'VIP không giới hạn'
+        : 'Chưa đăng ký VIP';
   const membershipMeta =
     membership.state === 'expired'
       ? membership.formattedExpiry
+        ? `Hết hạn ${membership.formattedExpiry}`
+        : null
       : membership.state === 'active' && membership.formattedExpiry
         ? `Đến ${membership.formattedExpiry}`
         : null;
@@ -392,15 +430,21 @@ export default function ProfileScreen() {
       iconBackground: shell.appBlueContainer,
       onPress: openAccountSettings,
     },
-    {
-      key: 'membership',
-      title: 'Gói thành viên',
-      supporting:
-        membership.state === 'active' ? membershipStatus : 'Quyền lợi và thanh toán',
-      icon: <Crown color={shell.appWarning} size={18} {...IC} />,
-      iconBackground: shell.appYellowContainer,
-      onPress: () => navigation.navigate('VipPackages'),
-    },
+    ...(canPurchaseVip
+      ? [
+          {
+            key: 'membership',
+            title: 'Gói thành viên',
+            supporting:
+              membership.state === 'active'
+                ? membershipStatus
+                : 'Quyền lợi và thanh toán',
+            icon: <Crown color={shell.appWarning} size={18} {...IC} />,
+            iconBackground: shell.appYellowContainer,
+            onPress: () => navigation.navigate('VipPackages'),
+          },
+        ]
+      : []),
     {
       key: 'notifications',
       title: 'Thông báo',
@@ -409,21 +453,39 @@ export default function ProfileScreen() {
       iconBackground: shell.appPrimaryContainer,
       onPress: () => navigation.navigate('Notifications'),
     },
-    ...(hasStaffWorkspace
-      ? [
-          {
-            key: 'staff',
-            title: 'Khu vực tác nghiệp',
-            supporting: 'Bài viết, kiểm duyệt và quản trị',
-            icon: (
-              <BriefcaseBusiness color={shell.appSageIcon} size={18} {...IC} />
-            ),
-            iconBackground: shell.appSecondaryContainer,
-            onPress: () => navigation.navigate('StaffWorkspace'),
-          },
-        ]
-      : []),
   ];
+
+  const staffRoleCopy =
+    user.role === 'AUTHOR'
+      ? {
+          eyebrow: 'DÀNH CHO TÁC GIẢ',
+          title: 'Quản lý bài viết',
+          supporting: 'Soạn bài, gửi duyệt và theo dõi doanh thu',
+        }
+      : user.role === 'CENSOR'
+        ? {
+            eyebrow: 'DÀNH CHO KIỂM DUYỆT',
+            title: 'Kiểm duyệt nội dung',
+            supporting: 'Duyệt hoặc trả lại các bài đang chờ',
+          }
+        : {
+            eyebrow: 'DÀNH CHO QUẢN TRỊ VIÊN',
+            title: 'Trung tâm quản trị',
+            supporting: 'Quản lý tài khoản, phân quyền và bài viết',
+          };
+
+  const staffRows: ProfileRow[] = hasStaffWorkspace
+    ? [
+        {
+          key: 'staff',
+          title: staffRoleCopy.title,
+          supporting: staffRoleCopy.supporting,
+          icon: <BriefcaseBusiness color={shell.appSageIcon} size={18} {...IC} />,
+          iconBackground: shell.appSecondaryContainer,
+          onPress: () => navigation.navigate('StaffWorkspace'),
+        },
+      ]
+    : [];
 
   const readingExperienceRows: ProfileRow[] = [
     {
@@ -693,45 +755,47 @@ export default function ProfileScreen() {
             </View>
           </View>
 
-          <View
-            style={[styles.identityDetails, { borderTopColor: shell.appDivider }]}
-          >
-            <View style={styles.readingLimitColumn}>
-              <Text style={[styles.detailLabel, { color: shell.appTextMuted }]}>
-                BÀI MIỄN PHÍ CÒN LẠI
-              </Text>
-              <Text style={[styles.detailValue, { color: shell.appTextPrimary }]}>
-                {hasActiveVip
-                  ? 'Không giới hạn'
-                  : `${user.freeArticlesLeft ?? 0} bài`}
-              </Text>
-            </View>
+          {canPurchaseVip && (
             <View
-              style={[
-                styles.membershipColumn,
-                { borderLeftColor: shell.appDivider },
-              ]}
+              style={[styles.identityDetails, { borderTopColor: shell.appDivider }]}
             >
-              <Text style={[styles.detailLabel, { color: shell.appTextMuted }]}>
-                THÀNH VIÊN
-              </Text>
-              <View
-                style={[
-                  styles.statusBadge,
-                  { backgroundColor: membershipStatusBackground },
-                ]}
-              >
-                <Text style={[styles.statusText, { color: membershipStatusColor }]}>
-                  {membershipStatus}
+              <View style={styles.readingLimitColumn}>
+                <Text style={[styles.detailLabel, { color: shell.appTextMuted }]}>
+                  LƯỢT VIP THÁNG NÀY
+                </Text>
+                <Text style={[styles.detailValue, { color: shell.appTextPrimary }]}>
+                  {hasActiveVip
+                    ? 'Không giới hạn'
+                    : `Còn ${user.freeArticlesLeft ?? 0}/3 bài`}
                 </Text>
               </View>
-              {!!membershipMeta && (
-                <Text style={[styles.membershipDate, { color: shell.appTextSecondary }]}>
-                  {membershipMeta}
+              <View
+                style={[
+                  styles.membershipColumn,
+                  { borderLeftColor: shell.appDivider },
+                ]}
+              >
+                <Text style={[styles.detailLabel, { color: shell.appTextMuted }]}>
+                  GÓI ĐỌC
                 </Text>
-              )}
+                <View
+                  style={[
+                    styles.statusBadge,
+                    { backgroundColor: membershipStatusBackground },
+                  ]}
+                >
+                  <Text style={[styles.statusText, { color: membershipStatusColor }]}>
+                    {membershipStatus}
+                  </Text>
+                </View>
+                {!!membershipMeta && (
+                  <Text style={[styles.membershipDate, { color: shell.appTextSecondary }]}>
+                    {membershipMeta}
+                  </Text>
+                )}
+              </View>
             </View>
-          </View>
+          )}
 
           <View
             style={[styles.profileActions, { borderTopColor: shell.appDivider }]}
@@ -746,54 +810,65 @@ export default function ProfileScreen() {
                 Chỉnh sửa hồ sơ
               </Text>
             </TouchableOpacity>
-            <TouchableOpacity
-              accessibilityRole="button"
-              hitSlop={3}
-              style={styles.profileActionButton}
-              onPress={() => navigation.navigate('VipPackages')}
-            >
-              <Text style={[styles.profileActionText, { color: shell.appPrimary }]}>
-                {membershipAction} →
-              </Text>
-            </TouchableOpacity>
+            {canPurchaseVip && (
+              <TouchableOpacity
+                accessibilityRole="button"
+                hitSlop={3}
+                style={styles.profileActionButton}
+                onPress={() => navigation.navigate('VipPackages')}
+              >
+                <Text style={[styles.profileActionText, { color: shell.appPrimary }]}>
+                  {membershipAction} →
+                </Text>
+              </TouchableOpacity>
+            )}
           </View>
         </View>
 
-        <TouchableOpacity
-          accessibilityRole="button"
-          activeOpacity={0.78}
-          style={[
-            styles.vipCard,
-            {
-              backgroundColor: shell.appYellowContainer,
-              borderColor: shell.appVipBorder,
-            },
-          ]}
-          onPress={() => navigation.navigate('VipPackages')}
-        >
-          <View style={styles.vipLabelRow}>
-            <Crown color={shell.appWarning} size={17} {...IC} />
-            <Text style={[styles.vipLabel, { color: shell.appWarning }]}>
-              NEWSDAILY VIP
-            </Text>
+        {hasStaffWorkspace && (
+          <View style={styles.staffSectionBlock}>
+            {renderSectionHeading(staffRoleCopy.eyebrow, 'Không gian tác nghiệp')}
+            {renderRows(staffRows)}
           </View>
-          <Text
-            numberOfLines={2}
-            style={[styles.vipDescription, { color: shell.appTextPrimary }]}
+        )}
+
+        {canPurchaseVip && (
+          <TouchableOpacity
+            accessibilityRole="button"
+            activeOpacity={0.78}
+            style={[
+              styles.vipCard,
+              {
+                backgroundColor: shell.appYellowContainer,
+                borderColor: shell.appVipBorder,
+              },
+            ]}
+            onPress={() => navigation.navigate('VipPackages')}
           >
-            {membership.state === 'active'
-              ? membership.formattedExpiry
-                ? `Gói của bạn đang hoạt động đến ${membership.formattedExpiry}.`
-                : 'Gói của bạn đang hoạt động.'
-              : 'Đọc không giới hạn và sử dụng các tính năng dành cho thành viên.'}
-          </Text>
-          <View style={styles.vipAction}>
-            <Text style={[styles.vipActionText, { color: shell.appPrimary }]}>
-              {membership.state === 'active' ? 'Quản lý gói' : 'Xem quyền lợi'}
+            <View style={styles.vipLabelRow}>
+              <Crown color={shell.appWarning} size={17} {...IC} />
+              <Text style={[styles.vipLabel, { color: shell.appWarning }]}>
+                NEWSDAILY VIP
+              </Text>
+            </View>
+            <Text
+              numberOfLines={2}
+              style={[styles.vipDescription, { color: shell.appTextPrimary }]}
+            >
+              {membership.state === 'active'
+                ? membership.formattedExpiry
+                  ? `Gói của bạn đang hoạt động đến ${membership.formattedExpiry}.`
+                  : 'Gói của bạn đang hoạt động.'
+                : 'Đọc không giới hạn và sử dụng các tính năng dành cho thành viên.'}
             </Text>
-            <ChevronRight color={shell.appPrimary} size={17} {...IC} />
-          </View>
-        </TouchableOpacity>
+            <View style={styles.vipAction}>
+              <Text style={[styles.vipActionText, { color: shell.appPrimary }]}>
+                {membership.state === 'active' ? 'Quản lý gói' : 'Xem quyền lợi'}
+              </Text>
+              <ChevronRight color={shell.appPrimary} size={17} {...IC} />
+            </View>
+          </TouchableOpacity>
+        )}
 
         <View style={styles.sectionBlock}>
           {renderSectionHeading('KHÔNG GIAN CỦA BẠN', 'Đọc và quản lý')}
@@ -1108,6 +1183,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   vipActionText: { fontSize: 12, lineHeight: 17, fontWeight: '700' },
+  staffSectionBlock: { marginTop: 12 },
   sectionBlock: { marginTop: 22 },
   sectionHeading: { marginHorizontal: 16, marginBottom: 8 },
   sectionEyebrow: { fontSize: 9.5, lineHeight: 12, fontWeight: '800', letterSpacing: 0.5 },

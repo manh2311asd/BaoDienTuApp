@@ -16,7 +16,7 @@ import {
   DemoCardPayment,
 } from '../../types/content';
 import { useAppStore, UserSession } from '../../store/useAppStore';
-import { clearStoredSession } from '../sessionStorage';
+import { clearStoredSession, saveStoredSession } from '../sessionStorage';
 import {
   ExchangeRate,
   GoldPrice,
@@ -87,6 +87,19 @@ const api = axios.create({
   timeout: 10000,
 });
 
+const syncMonthlyVipQuota = (value: unknown) => {
+  if (value == null) return;
+  const remaining = Number(value);
+  if (!Number.isFinite(remaining)) return;
+
+  const { user, setUser } = useAppStore.getState();
+  if (!user || user.freeArticlesLeft === remaining) return;
+
+  const updatedUser = { ...user, freeArticlesLeft: remaining };
+  setUser(updatedUser);
+  saveStoredSession(updatedUser).catch(() => undefined);
+};
+
 const mapStaffArticle = (item: any): Article => ({
   id: Number(item.id),
   authorId: Number(item.authorId),
@@ -104,6 +117,58 @@ const mapStaffArticle = (item: any): Article => ({
   viewCount: Number(item.viewCount || 0),
   createdAt: item.createdAt,
 });
+
+const mapArticleSummary = (item: any): Article => ({
+  id: Number(item.id),
+  authorId: Number(item.authorId || 0),
+  authorName: item.authorName || 'Ẩn danh',
+  coverImage: resolveApiAssetUrl(item.coverImage),
+  coverImagePath: item.coverImage,
+  categoryId: Number(item.categoryId || 0),
+  categoryName: item.categoryName || '',
+  title: item.title || '',
+  sapo: item.sapo || '',
+  content: item.content || '',
+  type: item.type || 'FREE',
+  status: item.status || 'PUBLISHED',
+  viewCount: Number(item.viewCount || 0),
+  createdAt: item.createdAt,
+  origin: item.origin || 'INTERNAL',
+  originalUrl: item.originalUrl || '',
+  sourceName: item.sourceName || '',
+});
+
+const externalIdToLocalNumber = (value: string): number => {
+  let hash = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    hash = (hash * 31 + value.charCodeAt(index)) % 2147483647;
+  }
+  return -(hash || 1);
+};
+
+const mapExternalNews = (item: any): Article => {
+  const externalId = String(item.id || `${item.source || 'news'}:${item.articleUrl || ''}`);
+  return {
+    id: externalIdToLocalNumber(externalId),
+    externalId,
+    authorId: 0,
+    authorName: item.source || 'Nguồn tin',
+    coverImage: item.imageUrl || '',
+    coverImagePath: item.imageUrl || '',
+    categoryId: 0,
+    categoryName: item.category || 'Tin mới nhất',
+    title: item.title || '',
+    sapo: item.description || '',
+    content: '',
+    type: 'FREE',
+    status: 'PUBLISHED',
+    viewCount: 0,
+    createdAt: item.publishedAt,
+    origin: 'EXTERNAL',
+    originalUrl: item.articleUrl || '',
+    sourceName: item.source || '',
+  };
+};
 
 // Request interceptor to automatically add authorization header
 api.interceptors.request.use(
@@ -227,6 +292,42 @@ export const apiClient = {
     }
   },
 
+  getExternalNews: async (
+    params: {
+      category?: string;
+      source?: string;
+      keyword?: string;
+      page?: number;
+      pageSize?: number;
+      refresh?: boolean;
+    },
+    config?: any
+  ): Promise<ApiResponse<PaginatedResponse<Article>>> => {
+    try {
+      const res = await api.get('/api/news', { params, ...config });
+      const mapped = Array.isArray(res.data?.items)
+        ? res.data.items.map(mapExternalNews)
+        : [];
+
+      return {
+        data: {
+          content: mapped,
+          page: Math.max(0, Number(res.data?.page ?? params.page ?? 1) - 1),
+          size: Number(res.data?.pageSize ?? params.pageSize ?? mapped.length),
+          totalElements: Number(res.data?.total ?? mapped.length),
+          totalPages: Math.ceil(
+            Number(res.data?.total ?? mapped.length) /
+              Math.max(1, Number(res.data?.pageSize ?? params.pageSize ?? (mapped.length || 1)))
+          ),
+          hasNext: Boolean(res.data?.hasMore),
+        },
+        status: res.status,
+      };
+    } catch (e: any) {
+      return handleAxiosError(e);
+    }
+  },
+
   searchArticles: async (
     params: {
       keyword?: string;
@@ -246,25 +347,7 @@ export const apiClient = {
       const isPaginated = res.data && typeof res.data === 'object' && 'content' in res.data;
       const rawList = isPaginated ? res.data.content : res.data;
 
-      const mapped: Article[] = rawList.map((item: any) => ({
-        id: item.id,
-        authorId: item.authorId || 0,
-        authorName: item.authorName || 'Ẩn danh',
-        coverImage: resolveApiAssetUrl(item.coverImage),
-        coverImagePath: item.coverImage,
-        categoryId: item.categoryId || 0,
-        categoryName: item.categoryName || '',
-        title: item.title,
-        sapo: item.sapo,
-        content: '',
-        type: item.type || 'FREE',
-        status: 'PUBLISHED',
-        viewCount: item.viewCount || 0,
-        createdAt: item.createdAt,
-        origin: item.origin || 'INTERNAL',
-        originalUrl: item.originalUrl || '',
-        sourceName: item.sourceName || '',
-      }));
+      const mapped: Article[] = rawList.map(mapArticleSummary);
 
       if (isPaginated) {
         return {
@@ -299,14 +382,8 @@ export const apiClient = {
       const data = res.data;
       
       // Update store user free articles if backend returned it
-      if (data.meteredAccessApplied && data.remainingFreeReads !== undefined) {
-        const { user, setUser } = useAppStore.getState();
-        if (user) {
-          setUser({
-            ...user,
-            freeArticlesLeft: data.remainingFreeReads,
-          });
-        }
+      if (data.remainingFreeReads !== undefined) {
+        syncMonthlyVipQuota(data.remainingFreeReads);
       }
 
       const mapped = {
@@ -342,6 +419,9 @@ export const apiClient = {
     try {
       const res = await api.get(`/api/articles/${articleId}/preview`);
       const data = res.data;
+      if (data.remainingFreeReads !== undefined) {
+        syncMonthlyVipQuota(data.remainingFreeReads);
+      }
       const mapped = {
         id: data.id,
         title: data.title,
@@ -541,6 +621,34 @@ export const apiClient = {
   },
 
   // Personal news preferences
+  getMyAccount: async (): Promise<ApiResponse<Omit<UserSession, 'jwtToken'>>> => {
+    try {
+      const res = await api.get('/api/me/account');
+      return {
+        data: {
+          id: Number(res.data.id),
+          name: res.data.fullName,
+          email: res.data.email,
+          role: res.data.role,
+          vipExpiryDate: res.data.vipExpiryDate,
+          freeArticlesLeft: Number(
+            res.data.freeArticlesLeft ??
+              useAppStore.getState().user?.freeArticlesLeft ??
+              0
+          ),
+          avatar: resolveApiAssetUrl(res.data.avatar) || undefined,
+        },
+        status: res.status,
+      };
+    } catch (e: any) {
+      throw new Error(
+        e.response?.data?.message ||
+          e.message ||
+          'Không thể tải thông tin tài khoản'
+      );
+    }
+  },
+
   getUserPreferences: async (): Promise<ApiResponse<UserPreferences>> => {
     try {
       const res = await api.get('/api/me/preferences');

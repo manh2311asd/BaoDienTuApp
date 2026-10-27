@@ -173,7 +173,7 @@ export default function LibraryScreen({ navigation, route }: any) {
   const renderArticle = ({ item }: { item: Partial<Article> }) => {
     const downloaded = section === 'downloaded';
     const history = section === 'history';
-    const displayImage = !downloaded && showImages && Boolean(item.coverImage);
+    const displayImage = showImages && Boolean(item.coverImage);
 
     return (
       <TouchableOpacity

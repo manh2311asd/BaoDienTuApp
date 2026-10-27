@@ -1,5 +1,5 @@
 import React from 'react';
-import { StyleSheet, View, Text, TouchableOpacity } from 'react-native';
+import { ActivityIndicator, StyleSheet, View, Text, TouchableOpacity } from 'react-native';
 import { ArrowLeft, Headphones, Bookmark, Share2, Pause, Play, X, Download, Check } from 'lucide-react-native';
 import { C, F_SANS } from './constants';
 import { useAppStore } from '../../store/useAppStore';
@@ -20,6 +20,7 @@ interface DetailBottomBarProps {
   speechParagraphCount: number;
   insets: any;
   isSavedOffline: boolean;
+  offlineActionPending: 'saving' | 'removing' | null;
   handleToggleOffline: () => void;
 }
 
@@ -38,6 +39,7 @@ export default function DetailBottomBar({
   speechParagraphCount,
   insets,
   isSavedOffline,
+  offlineActionPending,
   handleToggleOffline,
 }: DetailBottomBarProps) {
   const themeMode = useAppStore((state) => state.themeMode);
@@ -59,6 +61,25 @@ export default function DetailBottomBar({
         },
       ]}
     >
+      {offlineActionPending && !audioModeActive && (
+        <View
+          style={[
+            styles.offlineStatus,
+            {
+              backgroundColor: shell.appHeader,
+              borderColor: shell.appBorder,
+            },
+          ]}
+        >
+          <ActivityIndicator size="small" color={shell.appHeaderText} />
+          <Text style={[styles.offlineStatusText, { color: shell.appHeaderText }]}>
+            {offlineActionPending === 'saving'
+              ? 'Đang tải bài và hình ảnh...'
+              : 'Đang xóa bản tải xuống...'}
+          </Text>
+        </View>
+      )}
+
       {!audioModeActive ? (
         <View style={styles.bottomBarNormal}>
           <TouchableOpacity style={[styles.bottomBarBtn, { backgroundColor: shell.appSurface, borderColor: shell.appBorder }]} onPress={() => navigation.goBack()}>
@@ -90,10 +111,23 @@ export default function DetailBottomBar({
               styles.bottomBarBtn,
               { backgroundColor: shell.appSurface, borderColor: shell.appBorder },
               isSavedOffline && { backgroundColor: shell.appSecondaryContainer },
+              offlineActionPending && styles.bottomBarBtnPending,
             ]}
             onPress={handleToggleOffline}
+            disabled={Boolean(offlineActionPending)}
+            accessibilityLabel={
+              offlineActionPending === 'saving'
+                ? 'Đang tải bài và hình ảnh để đọc offline'
+                : offlineActionPending === 'removing'
+                  ? 'Đang xóa bản tải xuống'
+                  : isSavedOffline
+                    ? 'Xóa bản tải xuống'
+                    : 'Tải bài để đọc offline'
+            }
           >
-            {isSavedOffline ? (
+            {offlineActionPending ? (
+              <ActivityIndicator size="small" color={shell.appPrimary} />
+            ) : isSavedOffline ? (
               <Check color={shell.appSuccess} size={18} strokeWidth={2.5} />
             ) : (
               <Download color={shell.appTextPrimary} size={18} strokeWidth={2.5} />
@@ -189,6 +223,33 @@ const styles = StyleSheet.create({
     backgroundColor: appTheme.light.appSurface,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  bottomBarBtnPending: {
+    opacity: 0.75,
+  },
+  offlineStatus: {
+    position: 'absolute',
+    top: -48,
+    left: 16,
+    right: 16,
+    minHeight: 38,
+    borderRadius: 10,
+    borderWidth: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 14,
+    shadowColor: '#000',
+    shadowOpacity: 0.16,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 4,
+  },
+  offlineStatusText: {
+    marginLeft: 9,
+    fontFamily: F_SANS,
+    fontSize: 13,
+    fontWeight: '700',
   },
   bottomBarTts: {
     flexDirection: 'row',

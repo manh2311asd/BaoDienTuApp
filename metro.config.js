@@ -94,4 +94,11 @@ try {
   console.error('[AutoIP] Error updating IP address:', e);
 }
 
-module.exports = getDefaultConfig(__dirname);
+const config = getDefaultConfig(__dirname);
+
+// Windows can exhaust its open-file handles when Metro scans this project
+// with many worker processes. One worker is fast enough for this app and is
+// considerably more stable during reloads on the emulator.
+config.maxWorkers = 1;
+
+module.exports = config;

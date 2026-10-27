@@ -5,7 +5,7 @@ import {
 
 describe('profile presentation helpers', () => {
   it('shows a clear unregistered state when a member has no VIP expiry', () => {
-    expect(getMembershipDisplay('MEMBER', null).value).toBe('Chưa đăng ký');
+    expect(getMembershipDisplay('MEMBER', null).value).toBe('Chưa đăng ký VIP');
   });
 
   it('labels an expired membership instead of showing an unexplained date', () => {
@@ -15,8 +15,9 @@ describe('profile presentation helpers', () => {
       new Date('2026-08-05T12:00:00+07:00')
     );
     expect(result.state).toBe('expired');
-    expect(result.label).toBe('ĐÃ HẾT HẠN');
-    expect(result.value).toContain('25');
+    expect(result.label).toBe('GÓI VIP');
+    expect(result.value).toBe('VIP đã hết hạn');
+    expect(result.formattedExpiry).toContain('25');
   });
 
   it('keeps an active VIP expiry visible', () => {
@@ -36,7 +37,8 @@ describe('profile presentation helpers', () => {
       new Date('2026-08-05T12:00:00+07:00')
     );
     expect(result.state).toBe('active');
-    expect(result.label).toBe('HẠN THÀNH VIÊN');
+    expect(result.label).toBe('GÓI VIP');
+    expect(result.value).toBe('VIP không giới hạn');
     expect(result.formattedExpiry).toBeTruthy();
   });
 

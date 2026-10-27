@@ -85,11 +85,11 @@ const IC = { strokeWidth: 2 } as const;
 
 const ARTICLE_CACHE_KEY = '@BaoDienTu:explore_articles_v2';
 const CATEGORY_CACHE_KEY = '@BaoDienTu:explore_categories_v2';
-const POINT_NEWS_CACHE_KEY = '@BaoDienTu:explore_point_news_v2';
+const POINT_NEWS_CACHE_KEY = '@BaoDienTu:explore_point_news_v3';
 const TOPIC_COUNTS_CACHE_KEY = '@BaoDienTu:explore_topic_counts_v1';
 const ARTICLE_TTL = 5 * 60 * 1000;
 const CATEGORY_TTL = 45 * 60 * 1000;
-const POINT_NEWS_TTL = 8 * 60 * 1000;
+const POINT_NEWS_TTL = 2 * 60 * 1000;
 const TOPIC_COUNTS_TTL = 5 * 60 * 1000;
 const ALL_EXPLORE_TARGETS: ExploreRefreshTargets = {
   articles: true,
@@ -598,7 +598,7 @@ export default function ExploreScreen({ navigation, route }: any) {
 
     if (targets.pointNews) {
       tasks.push(apiClient
-        .searchArticles({ origin: 'EXTERNAL', page: 0, size: 3 })
+        .getExternalNews({ page: 1, pageSize: 3, refresh: manual })
         .then((response) => {
         if (!aliveRef.current) return;
         const next = extractArticles(response.data).slice(0, 3);

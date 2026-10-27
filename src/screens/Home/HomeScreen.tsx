@@ -51,6 +51,12 @@ let homeNotificationCache: {
 const HOME_ARTICLE_CACHE_KEY = '@BaoDienTu:home_articles_v3';
 const HOME_CATEGORY_CACHE_KEY = '@BaoDienTu:home_categories_v3';
 
+const isDisplayableImageUrl = (url?: string) => {
+  if (!url?.trim()) return false;
+  const normalizedUrl = url.split('?')[0].toLowerCase();
+  return !normalizedUrl.endsWith('.mp4') && !normalizedUrl.endsWith('.webm');
+};
+
 const formatDate = (dateStr?: string) => {
   if (!dateStr) return 'Gần đây';
   const date = new Date(dateStr);
@@ -119,7 +125,7 @@ const CompactArticleCard = React.memo(({
           <Text style={[styles.metaLabel, { color: colors.textMuted }]}>{formatArticleDate(item.createdAt)}</Text>
         </View>
       </View>
-      {showImages && item.coverImage ? (
+      {showImages && isDisplayableImageUrl(item.coverImage) ? (
         <Image source={{ uri: item.coverImage }} style={styles.compactThumb} />
       ) : (
         <View
@@ -247,6 +253,11 @@ export default function HomeScreen({ navigation }: any) {
           const parsed = JSON.parse(cachedArticlesRaw);
           if (parsed && Array.isArray(parsed.data) && parsed.data.length > 0) {
             setArticles(parsed.data);
+            setHasMore(
+              typeof parsed.hasMore === 'boolean'
+                ? parsed.hasMore
+                : parsed.data.length >= 15
+            );
             setInitialLoading(false);
             hasLoadedOnceRef.current = true;
           }
@@ -341,7 +352,7 @@ export default function HomeScreen({ navigation }: any) {
           if (!debouncedQuery && selectedCatId === null) {
             AsyncStorage.setItem(
               HOME_ARTICLE_CACHE_KEY,
-              JSON.stringify({ savedAt: Date.now(), data: newArticles })
+              JSON.stringify({ savedAt: Date.now(), data: newArticles, hasMore: !ended })
             ).catch(() => undefined);
           }
         } else {
@@ -697,17 +708,9 @@ export default function HomeScreen({ navigation }: any) {
             }}
             activeOpacity={0.9}
           >
-            {showImages && heroArticle.coverImage ? (
+            {showImages && isDisplayableImageUrl(heroArticle.coverImage) ? (
               <Image source={{ uri: heroArticle.coverImage }} style={styles.heroImage} />
-            ) : (
-              <View
-                style={[
-                  styles.heroImage,
-                  styles.imagePlaceholder,
-                  { backgroundColor: colors.border },
-                ]}
-              />
-            )}
+            ) : null}
             <View style={styles.heroContent}>
               {heroArticle.type === 'VIP' && (
                 <View style={[styles.vipBadge, { backgroundColor: shell.appYellowContainer }]}>
@@ -821,6 +824,9 @@ export default function HomeScreen({ navigation }: any) {
           return <ActivityIndicator size="small" color={colors.text} style={{ marginVertical: 16 }} />;
         }}
         ListEmptyComponent={() => {
+          // The first article is rendered in ListHeaderComponent as the hero.
+          // Therefore an empty list here is expected when the API returns one article.
+          if (articles.length > 0) return null;
           if (initialLoading) return renderSkeleton();
           if (error) {
             return (

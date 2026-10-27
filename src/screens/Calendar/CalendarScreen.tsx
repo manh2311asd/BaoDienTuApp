@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useMemo, useRef } from 'react';
 import {
   StyleSheet,
   View,
@@ -19,6 +19,18 @@ interface CalendarMonth {
   month: number;
   key: string;
 }
+
+const lunarDateCache = new Map<string, ReturnType<typeof solarLunar.solar2lunar>>();
+
+const getLunarDate = (year: number, month: number, day: number) => {
+  const key = `${year}-${month}-${day}`;
+  const cached = lunarDateCache.get(key);
+  if (cached) return cached;
+
+  const lunarDate = solarLunar.solar2lunar(year, month, day);
+  lunarDateCache.set(key, lunarDate);
+  return lunarDate;
+};
 
 // §3 Font tokens
 const F_SERIF = Platform.select({ ios: 'Georgia', android: 'serif', default: 'serif' });
@@ -129,7 +141,7 @@ export default function CalendarScreen({ navigation }: any) {
     return list;
   };
 
-  const [months, setMonths] = useState(generateInitialMonths());
+  const [months, setMonths] = useState<CalendarMonth[]>(generateInitialMonths);
 
   // Calculate target initial scroll index of current selected month
   const getInitialScrollIndex = () => {
@@ -159,10 +171,13 @@ export default function CalendarScreen({ navigation }: any) {
     return days[date.getDay()];
   };
 
-  const selectedLunar = solarLunar.solar2lunar(
-    selectedDate.getFullYear(),
-    selectedDate.getMonth() + 1,
-    selectedDate.getDate()
+  const selectedLunar = useMemo(
+    () => getLunarDate(
+      selectedDate.getFullYear(),
+      selectedDate.getMonth() + 1,
+      selectedDate.getDate()
+    ),
+    [selectedDate]
   );
   const selectedYearCanChi = getYearCanChi(selectedLunar.lYear);
   const selectedHoliday = getHoliday(
@@ -178,6 +193,7 @@ export default function CalendarScreen({ navigation }: any) {
   // Renders a monthly grid card
   const renderMonthCard = useCallback(({ item }: { item: CalendarMonth }) => {
     const { year, month } = item;
+    const today = new Date();
     const totalDays = new Date(year, month, 0).getDate();
     // Monday-based offset: 0 for Monday, 6 for Sunday
     const startOffset = (new Date(year, month - 1, 1).getDay() + 6) % 7;
@@ -198,11 +214,11 @@ export default function CalendarScreen({ navigation }: any) {
         selectedDate.getFullYear() === year;
 
       const isToday =
-        new Date().getDate() === day &&
-        new Date().getMonth() + 1 === month &&
-        new Date().getFullYear() === year;
+        today.getDate() === day &&
+        today.getMonth() + 1 === month &&
+        today.getFullYear() === year;
 
-      const lunarCal = solarLunar.solar2lunar(year, month, day);
+      const lunarCal = getLunarDate(year, month, day);
       const lDay = lunarCal.lDay;
       const lMonth = lunarCal.lMonth;
       const isFirstLunarDay = lDay === 1;
@@ -383,6 +399,10 @@ export default function CalendarScreen({ navigation }: any) {
         })}
         onEndReached={loadMoreMonths}
         onEndReachedThreshold={0.5}
+        initialNumToRender={1}
+        maxToRenderPerBatch={2}
+        windowSize={3}
+        removeClippedSubviews={Platform.OS === 'android'}
         contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
       />

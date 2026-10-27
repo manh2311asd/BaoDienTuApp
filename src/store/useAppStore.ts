@@ -130,7 +130,13 @@ export const useAppStore = create<AppState>()(
       
       setUser: (user) => set({ user }),
       
-      logout: () => set({ user: null, subscriptions: [] }),
+      logout: () =>
+        set({
+          user: null,
+          bookmarkedIds: [],
+          offlineIds: [],
+          subscriptions: [],
+        }),
       
       setBookmarkedIds: (ids) => set({ bookmarkedIds: ids }),
       
@@ -188,9 +194,6 @@ export const useAppStore = create<AppState>()(
         articleLineHeight: state.articleLineHeight,
         showImages: state.showImages,
         wifiOnlyDownloads: state.wifiOnlyDownloads,
-        bookmarkedIds: state.bookmarkedIds,
-        offlineIds: state.offlineIds,
-        subscriptions: state.subscriptions,
         weatherAutoLocation: state.weatherAutoLocation,
         weatherLocation: state.weatherLocation,
       }),

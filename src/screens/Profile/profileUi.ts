@@ -33,15 +33,15 @@ export const getMembershipDisplay = (
     if (expiryEnd.getTime() < now.getTime()) {
       return {
         state: 'expired',
-        label: 'ĐÃ HẾT HẠN',
-        value: formattedExpiry || 'Đã hết hạn',
+        label: 'GÓI VIP',
+        value: 'VIP đã hết hạn',
         formattedExpiry,
       };
     }
     return {
       state: 'active',
-      label: 'HẠN THÀNH VIÊN',
-      value: formattedExpiry || 'Đang hoạt động',
+      label: 'GÓI VIP',
+      value: 'VIP không giới hạn',
       formattedExpiry,
     };
   }
@@ -49,16 +49,16 @@ export const getMembershipDisplay = (
   if (role === 'VIP') {
     return {
       state: 'active',
-      label: 'HẠN THÀNH VIÊN',
-      value: formattedExpiry || 'Đang hoạt động',
+      label: 'GÓI VIP',
+      value: 'VIP không giới hạn',
       formattedExpiry,
     };
   }
 
   return {
     state: 'none',
-    label: 'THÀNH VIÊN',
-    value: 'Chưa đăng ký',
+    label: 'GÓI VIP',
+    value: 'Chưa đăng ký VIP',
     formattedExpiry: null,
   };
 };

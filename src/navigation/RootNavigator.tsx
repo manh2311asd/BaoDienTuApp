@@ -5,7 +5,7 @@ import type { NavigatorScreenParams } from '@react-navigation/native';
 import { useAppStore } from '../store/useAppStore';
 import { BookOpen, Compass, House, UserCircle } from 'phosphor-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Animated, Text, ActivityIndicator, View } from 'react-native';
+import { Animated, Text, ActivityIndicator, TouchableOpacity, View } from 'react-native';
 import { appTheme, mainShellTheme } from '../theme/colors';
 
 // Import core screens (loaded statically for startup and navigation speed)
@@ -16,6 +16,8 @@ import ArticleDetailScreen from '../screens/ArticleDetail/ArticleDetailScreen';
 import UtilitiesScreen from '../screens/Utilities/UtilitiesScreen';
 import LoginScreen from '../screens/Login/LoginScreen';
 import ExploreScreen from '../screens/Explore/ExploreScreen';
+import PressReviewScreen from '../screens/Explore/PressReviewScreen';
+import ArticleWebViewScreen from '../screens/ArticleWebView/ArticleWebViewScreen';
 
 // Lazy loading helper for non-critical screens to reduce startup parsing cost
 const lazyScreen = (importFunc: () => Promise<{ default: React.ComponentType<any> }>) => {
@@ -33,6 +35,77 @@ const lazyScreen = (importFunc: () => Promise<{ default: React.ComponentType<any
   );
 };
 
+type StaffRole = 'AUTHOR' | 'CENSOR' | 'ADMIN';
+
+const withRoleGuard = (
+  ScreenComponent: React.ComponentType<any>,
+  allowedRoles: StaffRole[]
+) => {
+  const GuardedScreen = (props: any) => {
+    const user = useAppStore((state) => state.user);
+    const colors = useAppStore((state) => state.getColors());
+    const isAllowed = Boolean(
+      user && allowedRoles.includes(user.role as StaffRole)
+    );
+
+    if (!isAllowed) {
+      return (
+        <View
+          style={{
+            flex: 1,
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 28,
+            backgroundColor: colors.background,
+          }}
+        >
+          <Text
+            style={{
+              color: colors.text,
+              fontSize: 20,
+              lineHeight: 27,
+              fontWeight: '700',
+              textAlign: 'center',
+            }}
+          >
+            Bạn không có quyền mở khu vực này
+          </Text>
+          <Text
+            style={{
+              marginTop: 8,
+              color: colors.textMuted,
+              fontSize: 13,
+              lineHeight: 19,
+              textAlign: 'center',
+            }}
+          >
+            Hãy đăng nhập bằng tài khoản được cấp đúng vai trò tác nghiệp.
+          </Text>
+          <TouchableOpacity
+            activeOpacity={0.78}
+            onPress={() => props.navigation.goBack()}
+            style={{
+              marginTop: 20,
+              borderRadius: 8,
+              paddingHorizontal: 20,
+              paddingVertical: 12,
+              backgroundColor: colors.primary,
+            }}
+          >
+            <Text style={{ color: '#FFFFFF', fontSize: 13, fontWeight: '700' }}>
+              Quay lại
+            </Text>
+          </TouchableOpacity>
+        </View>
+      );
+    }
+
+    return <ScreenComponent {...props} />;
+  };
+
+  return GuardedScreen;
+};
+
 // Lazy loaded screens
 const VipPackagesScreen = lazyScreen(() => import('../screens/VipPackages/VipPackagesScreen'));
 const CalendarScreen = lazyScreen(() => import('../screens/Calendar/CalendarScreen'));
@@ -45,12 +118,22 @@ const WeatherScreen = lazyScreen(() => import('../screens/Weather/WeatherScreen'
 const WeatherSettingsScreen = lazyScreen(() => import('../screens/Weather/WeatherSettingsScreen'));
 const AuthorDetailScreen = lazyScreen(() => import('../screens/Author/AuthorDetailScreen'));
 const NotificationsScreen = lazyScreen(() => import('../screens/Notifications/NotificationsScreen'));
-const StaffWorkspaceScreen = lazyScreen(() => import('../screens/Staff/StaffWorkspaceScreen'));
-const ArticleEditorScreen = lazyScreen(() => import('../screens/Staff/ArticleEditorScreen'));
-const ModerationReviewScreen = lazyScreen(() => import('../screens/Staff/ModerationReviewScreen'));
-const AdminUsersScreen = lazyScreen(() => import('../screens/Staff/AdminUsersScreen'));
-const ArticleWebViewScreen = lazyScreen(() => import('../screens/ArticleWebView/ArticleWebViewScreen'));
-const PressReviewScreen = lazyScreen(() => import('../screens/Explore/PressReviewScreen'));
+const StaffWorkspaceScreen = withRoleGuard(
+  lazyScreen(() => import('../screens/Staff/StaffWorkspaceScreen')),
+  ['AUTHOR', 'CENSOR', 'ADMIN']
+);
+const ArticleEditorScreen = withRoleGuard(
+  lazyScreen(() => import('../screens/Staff/ArticleEditorScreen')),
+  ['AUTHOR']
+);
+const ModerationReviewScreen = withRoleGuard(
+  lazyScreen(() => import('../screens/Staff/ModerationReviewScreen')),
+  ['CENSOR', 'ADMIN']
+);
+const AdminUsersScreen = withRoleGuard(
+  lazyScreen(() => import('../screens/Staff/AdminUsersScreen')),
+  ['ADMIN']
+);
 const FontTypographySettingsScreen = lazyScreen(() => import('../screens/Settings/FontTypographySettingsScreen'));
 const AppearanceSettingsScreen = lazyScreen(() => import('../screens/Settings/AppearanceSettingsScreen'));
 const DownloadDataSettingsScreen = lazyScreen(() => import('../screens/Settings/DownloadDataSettingsScreen'));

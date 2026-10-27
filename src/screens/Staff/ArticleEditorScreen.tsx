@@ -13,7 +13,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { apiClient, resolveApiAssetUrl } from '../../services/api/client';
+import { BASE_URL, apiClient, resolveApiAssetUrl } from '../../services/api/client';
 import { useAppStore } from '../../store/useAppStore';
 import {
   ArticleStatus,
@@ -30,7 +30,7 @@ import {
   toArticleHtml,
 } from './staffUi';
 
-const LOCAL_COMPOSER_KEY = '@BaoDienTu:author_composer';
+const LOCAL_COMPOSER_KEY_PREFIX = '@BaoDienTu:author_composer:v2';
 const F_SERIF = Platform.select({
   ios: 'Georgia',
   android: 'serif',
@@ -58,6 +58,7 @@ const EMPTY_COMPOSER: ComposerState = {
 export default function ArticleEditorScreen({ route, navigation }: any) {
   const sourceArticleId = route.params?.articleId as number | undefined;
   const colors = useAppStore((state) => state.getColors());
+  const user = useAppStore((state) => state.user);
   const { showToast } = useToast();
   const [categories, setCategories] = useState<Category[]>([]);
   const [composer, setComposer] = useState<ComposerState>(EMPTY_COMPOSER);
@@ -71,6 +72,14 @@ export default function ArticleEditorScreen({ route, navigation }: any) {
   const [preview, setPreview] = useState(false);
   const [hydrated, setHydrated] = useState(false);
   const [error, setError] = useState('');
+  const localComposerKey = useMemo(() => {
+    const environment = BASE_URL
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9.-]+/g, '_')
+      .replace(/^_+|_+$/g, '') || 'default';
+    return `${LOCAL_COMPOSER_KEY_PREFIX}:${environment}:user:${user?.id ?? 'anonymous'}`;
+  }, [user?.id]);
 
   useEffect(() => {
     let active = true;
@@ -99,7 +108,7 @@ export default function ArticleEditorScreen({ route, navigation }: any) {
           setArticleStatus(article.status);
           setRejectionReason(article.rejectionReason || null);
         } else {
-          const localDraft = await AsyncStorage.getItem(LOCAL_COMPOSER_KEY);
+          const localDraft = await AsyncStorage.getItem(localComposerKey);
           if (localDraft && active) {
             setComposer({ ...EMPTY_COMPOSER, ...JSON.parse(localDraft) });
           }
@@ -117,17 +126,17 @@ export default function ArticleEditorScreen({ route, navigation }: any) {
     return () => {
       active = false;
     };
-  }, [sourceArticleId]);
+  }, [localComposerKey, sourceArticleId]);
 
   useEffect(() => {
     if (!hydrated || articleId) {
       return;
     }
     const timer = setTimeout(() => {
-      AsyncStorage.setItem(LOCAL_COMPOSER_KEY, JSON.stringify(composer));
+      AsyncStorage.setItem(localComposerKey, JSON.stringify(composer));
     }, 500);
     return () => clearTimeout(timer);
-  }, [articleId, composer, hydrated]);
+  }, [articleId, composer, hydrated, localComposerKey]);
 
   const selectedCategory = useMemo(
     () => categories.find((item) => item.id === composer.categoryId),
@@ -210,7 +219,7 @@ export default function ArticleEditorScreen({ route, navigation }: any) {
         : await apiClient.createStaffDraft(input);
       setArticleId(response.data.id);
       setArticleStatus(response.data.status);
-      await AsyncStorage.removeItem(LOCAL_COMPOSER_KEY);
+      await AsyncStorage.removeItem(localComposerKey);
       showToast(
         response.data.status === 'REJECTED'
           ? 'Đã lưu chỉnh sửa. Nhấn Gửi duyệt khi hoàn tất.'
@@ -236,7 +245,7 @@ export default function ArticleEditorScreen({ route, navigation }: any) {
         await apiClient.updateStaffArticle(articleId, input);
         await apiClient.submitStaffArticle(articleId);
       }
-      await AsyncStorage.removeItem(LOCAL_COMPOSER_KEY);
+      await AsyncStorage.removeItem(localComposerKey);
       showToast('Bài viết đã được gửi tới bàn kiểm duyệt');
       navigation.goBack();
     } catch (submitError: any) {

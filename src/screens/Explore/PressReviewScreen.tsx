@@ -9,10 +9,13 @@ import {
   Platform,
   TextInput,
   ActivityIndicator,
-  SafeAreaView,
   ScrollView,
   BackHandler,
+  Linking,
+  RefreshControl,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { useFocusEffect } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   ArrowLeft,
@@ -23,6 +26,7 @@ import {
   Compass,
   ChevronDown,
   X,
+  ImageOff,
 } from 'lucide-react-native';
 import { useAppStore } from '../../store/useAppStore';
 import { apiClient } from '../../services/api/client';
@@ -53,8 +57,35 @@ const CATEGORIES = [
   'Bất động sản',
 ];
 
+const PAGE_SIZE = 20;
+const FRONTEND_CACHE_FRESH_MS = 2 * 60 * 1000;
+
 const getCacheKey = (source: string, sort: string, topic: string | null, query: string) => {
-  return `@NewsDaily:press_review:v1:${source}:${sort}:${topic || ''}:${query}`;
+  return `@NewsDaily:press_review:v2:${source}:${sort}:${topic || ''}:${query}`;
+};
+
+const PressImage = ({ uri, style, color }: { uri?: string; style: any; color: string }) => {
+  const [failed, setFailed] = useState(!uri);
+
+  useEffect(() => {
+    setFailed(!uri);
+  }, [uri]);
+
+  if (failed) {
+    return (
+      <View style={[style, styles.imageFallback]}>
+        <ImageOff size={24} color={color} />
+      </View>
+    );
+  }
+
+  return (
+    <Image
+      source={{ uri }}
+      style={style}
+      onError={() => setFailed(true)}
+    />
+  );
 };
 
 export default function PressReviewScreen({ navigation }: any) {
@@ -73,6 +104,7 @@ export default function PressReviewScreen({ navigation }: any) {
   // Refs for request cancellation
   const abortControllerRef = useRef<AbortController | null>(null);
   const refreshInFlightRef = useRef(false);
+  const loadMoreInFlightRef = useRef(false);
   const requestId = useRef(0);
 
   // Filters
@@ -110,7 +142,7 @@ export default function PressReviewScreen({ navigation }: any) {
   }, [searchQuery]);
 
   const fetchPressArticles = useCallback(
-    async (isRefresh = false) => {
+    async (isRefresh = false, refreshSource = false) => {
       if (isRefresh) {
         if (refreshInFlightRef.current) return;
         refreshInFlightRef.current = true;
@@ -137,7 +169,22 @@ export default function PressReviewScreen({ navigation }: any) {
             const parsed = JSON.parse(cachedDataRaw);
             if (parsed && Array.isArray(parsed.data) && parsed.data.length > 0) {
               setArticles(parsed.data);
+              setPage(Number(parsed.page ?? 0));
+              setTotalPages(Number(parsed.totalPages ?? 1));
+              setHasMore(
+                typeof parsed.hasMore === 'boolean'
+                  ? parsed.hasMore
+                  : parsed.data.length >= PAGE_SIZE
+              );
               setLoading(false);
+              if (
+                refreshSource
+                && Number.isFinite(Number(parsed.savedAt))
+                && Date.now() - Number(parsed.savedAt) < FRONTEND_CACHE_FRESH_MS
+              ) {
+                setError(null);
+                return;
+              }
             } else {
               setArticles([]);
               setLoading(true);
@@ -155,22 +202,22 @@ export default function PressReviewScreen({ navigation }: any) {
 
       try {
         const queryParams: any = {
-          origin: 'EXTERNAL',
-          page: 0,
-          size: 15,
+          page: 1,
+          pageSize: PAGE_SIZE,
+          refresh: isRefresh || refreshSource,
         };
 
         if (debouncedQuery) {
           queryParams.keyword = debouncedQuery;
         }
         if (selectedSource !== 'Tất cả') {
-          queryParams.sourceName = selectedSource;
+          queryParams.source = selectedSource;
         }
         if (sortTab === 'topic' && selectedTopic) {
-          queryParams.keyword = selectedTopic;
+          queryParams.category = selectedTopic;
         }
 
-        const response = await apiClient.searchArticles(queryParams, {
+        const response = await apiClient.getExternalNews(queryParams, {
           signal: controller.signal
         });
         if (currentRequestId !== requestId.current) return;
@@ -192,7 +239,13 @@ export default function PressReviewScreen({ navigation }: any) {
         setArticles(newArticles);
         AsyncStorage.setItem(
           cacheKey,
-          JSON.stringify({ savedAt: Date.now(), data: newArticles })
+          JSON.stringify({
+            savedAt: Date.now(),
+            data: newArticles,
+            page: 0,
+            totalPages: Array.isArray(responseData) ? 1 : responseData.totalPages || 0,
+            hasMore: Array.isArray(responseData) ? false : responseData.hasNext,
+          })
         ).catch(() => undefined);
 
       } catch (err: any) {
@@ -216,9 +269,18 @@ export default function PressReviewScreen({ navigation }: any) {
     [debouncedQuery, selectedSource, sortTab, selectedTopic]
   );
 
-  useEffect(() => {
-    fetchPressArticles();
-  }, [fetchPressArticles]);
+  useFocusEffect(
+    useCallback(() => {
+      // Revalidate from live RSS whenever Điểm báo gains focus. The response
+      // is transient and is never inserted into the backend article table.
+      fetchPressArticles(false, true);
+
+      return () => {
+        abortControllerRef.current?.abort();
+        refreshInFlightRef.current = false;
+      };
+    }, [fetchPressArticles])
+  );
 
   useEffect(() => {
     const handleBackPress = () => {
@@ -244,30 +306,31 @@ export default function PressReviewScreen({ navigation }: any) {
   };
 
   const loadMore = async () => {
-    if (loadingMore || !hasMore || articles.length === 0 || page >= totalPages - 1) {
+    if (loadMoreInFlightRef.current || loadingMore || !hasMore || articles.length === 0 || page >= totalPages - 1) {
       return;
     }
     const nextPage = page + 1;
+    loadMoreInFlightRef.current = true;
     setLoadingMore(true);
 
     try {
       const queryParams: any = {
-        origin: 'EXTERNAL',
-        page: nextPage,
-        size: 15,
+        page: nextPage + 1,
+        pageSize: PAGE_SIZE,
+        refresh: false,
       };
 
       if (debouncedQuery) {
         queryParams.keyword = debouncedQuery;
       }
       if (selectedSource !== 'Tất cả') {
-        queryParams.sourceName = selectedSource;
+        queryParams.source = selectedSource;
       }
       if (sortTab === 'topic' && selectedTopic) {
-        queryParams.keyword = selectedTopic;
+        queryParams.category = selectedTopic;
       }
 
-      const response = await apiClient.searchArticles(queryParams);
+      const response = await apiClient.getExternalNews(queryParams);
       const responseData = response.data;
       const newItems = Array.isArray(responseData) ? responseData : responseData.content || [];
 
@@ -289,18 +352,25 @@ export default function PressReviewScreen({ navigation }: any) {
     } catch (err) {
       console.log('Lỗi tải thêm tin điểm báo:', err);
     } finally {
+      loadMoreInFlightRef.current = false;
       setLoadingMore(false);
     }
   };
 
-  const handleArticlePress = useCallback((item: Article) => {
+  const handleArticlePress = useCallback(async (item: Article) => {
     if (item.originalUrl?.trim()) {
-      navigation.navigate('ArticleWebView', {
-        url: item.originalUrl,
-        title: item.title,
-        sourceName: item.sourceName,
-      });
-      return;
+      try {
+        await Linking.openURL(item.originalUrl.trim());
+        return;
+      } catch (openError) {
+        console.warn('[PressReviewScreen Open Source Error]', openError);
+        navigation.navigate('ArticleWebView', {
+          url: item.originalUrl,
+          title: item.title,
+          sourceName: item.sourceName,
+        });
+        return;
+      }
     }
 
     navigation.navigate('ArticleDetail', {
@@ -391,9 +461,11 @@ export default function PressReviewScreen({ navigation }: any) {
               {formatDate(item.createdAt)}
             </Text>
           </View>
-          {item.coverImage ? (
-            <Image source={{ uri: item.coverImage }} style={styles.cardThumb} />
-          ) : null}
+          <PressImage
+            uri={item.coverImage}
+            style={styles.cardThumb}
+            color={theme.textMuted}
+          />
         </View>
 
         <View style={[styles.cardFooter, { borderTopColor: theme.border }]}>
@@ -557,7 +629,11 @@ export default function PressReviewScreen({ navigation }: any) {
             activeOpacity={0.8}
           >
             {heroArticle.coverImage ? (
-              <Image source={{ uri: heroArticle.coverImage }} style={styles.heroImage} />
+              <PressImage
+                uri={heroArticle.coverImage}
+                style={styles.heroImage}
+                color={theme.textMuted}
+              />
             ) : null}
             <View style={styles.heroContent}>
               <View style={styles.heroSourceBadgeRow}>
@@ -629,7 +705,18 @@ export default function PressReviewScreen({ navigation }: any) {
     }
 
     return (
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 12, paddingBottom: 60 }}>
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingHorizontal: 12, paddingBottom: 60 }}
+        refreshControl={(
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            tintColor={theme.primary}
+            colors={[theme.primary]}
+          />
+        )}
+      >
         {groups.map((group) => (
           <View key={group.sourceName} style={styles.groupContainer}>
             <View style={[styles.groupHeader, { borderBottomColor: theme.border }]}>
@@ -646,7 +733,10 @@ export default function PressReviewScreen({ navigation }: any) {
   };
 
   return (
-    <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.pageBackground }]}>
+    <SafeAreaView
+      edges={['top', 'left', 'right', 'bottom']}
+      style={[styles.safeArea, { backgroundColor: theme.pageBackground }]}
+    >
       {/* Search and Navigation Header */}
       <View style={[styles.topBar, { backgroundColor: theme.headerBackground, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.15)' }]}>
         <TouchableOpacity
@@ -713,7 +803,7 @@ export default function PressReviewScreen({ navigation }: any) {
       ) : (
         <FlatList
           data={listArticles} // Hero article is articles[0]
-          keyExtractor={(item) => item.id.toString()}
+          keyExtractor={(item) => item.externalId || item.id.toString()}
           refreshing={refreshing}
           onRefresh={handleRefresh}
           onEndReached={loadMore}
@@ -902,6 +992,11 @@ const styles = StyleSheet.create({
     width: 104,
     height: 78,
     borderRadius: 8,
+  },
+  imageFallback: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#ECE9E3',
   },
   cardFooter: {
     flexDirection: 'row',

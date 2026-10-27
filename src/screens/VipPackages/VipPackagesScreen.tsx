@@ -255,6 +255,45 @@ export default function VipPackagesScreen({ navigation }: any) {
     ? getFinalPrice(selectedPackage).toLocaleString('vi-VN')
     : '';
   const selectedSurface = shell.appYellowContainer;
+  const canPurchaseVip = user?.role === 'MEMBER' || user?.role === 'VIP';
+
+  if (user && !canPurchaseVip) {
+    return (
+      <SafeAreaView
+        edges={['top', 'bottom']}
+        style={[styles.root, { backgroundColor: colors.background }]}
+      >
+        <View
+          style={[
+            styles.header,
+            { backgroundColor: shell.appHeader, borderBottomColor: shell.appBorder },
+          ]}
+        >
+          <TouchableOpacity
+            accessibilityLabel="Quay lại"
+            style={styles.backButton}
+            onPress={() => navigation.goBack()}
+          >
+            <ArrowLeft color={shell.appHeaderText} size={22} {...IC} />
+          </TouchableOpacity>
+          <Text style={[styles.headerTitle, { color: shell.appHeaderText }]}>Gói thành viên</Text>
+          <View style={styles.headerSpacer} />
+        </View>
+        <View style={styles.restrictedState}>
+          <ShieldCheck color={shell.appSuccess} size={36} {...IC} />
+          <Text style={[styles.restrictedTitle, { color: colors.text }]}>Tài khoản tác nghiệp</Text>
+          <Text style={[styles.restrictedCopy, { color: colors.textMuted }]}>Gói VIP và thanh toán chỉ dành cho tài khoản người đọc.</Text>
+          <TouchableOpacity
+            accessibilityRole="button"
+            style={[styles.restrictedButton, { backgroundColor: colors.primary }]}
+            onPress={() => navigation.goBack()}
+          >
+            <Text style={styles.restrictedButtonText}>Quay lại Cá nhân</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView
@@ -441,9 +480,6 @@ export default function VipPackagesScreen({ navigation }: any) {
           { backgroundColor: colors.card, borderTopColor: colors.border },
         ]}
       >
-        <Text style={[styles.paymentNote, { color: colors.textMuted }]}>
-          Visa mẫu chỉ dành cho bản demo, không dùng thẻ thật
-        </Text>
         <TouchableOpacity
           disabled={!selectedPackage || paying}
           style={[
@@ -458,7 +494,7 @@ export default function VipPackagesScreen({ navigation }: any) {
           ) : (
             <Text style={[styles.payButtonText, { color: colors.background }]}>
               {selectedPackage
-                ? `Thanh toán Visa thử nghiệm • ${selectedPrice} ₫`
+                ? `Thanh toán Visa • ${selectedPrice} ₫`
                 : 'Chọn một gói để tiếp tục'}
             </Text>
           )}
@@ -705,6 +741,39 @@ const styles = StyleSheet.create({
   root: {
     flex: 1,
   },
+  restrictedState: {
+    flex: 1,
+    paddingHorizontal: 34,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  restrictedTitle: {
+    marginTop: 14,
+    fontFamily: F_SERIF,
+    fontSize: 23,
+    lineHeight: 29,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+  restrictedCopy: {
+    marginTop: 7,
+    fontSize: 13,
+    lineHeight: 19,
+    textAlign: 'center',
+  },
+  restrictedButton: {
+    minHeight: 46,
+    marginTop: 20,
+    paddingHorizontal: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 8,
+  },
+  restrictedButtonText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '800',
+  },
   header: {
     height: 56,
     paddingHorizontal: 8,
@@ -894,11 +963,6 @@ const styles = StyleSheet.create({
     paddingTop: 10,
     paddingBottom: 8,
     borderTopWidth: 1,
-  },
-  paymentNote: {
-    marginBottom: 7,
-    textAlign: 'center',
-    fontSize: 10,
   },
   payButton: {
     height: 48,

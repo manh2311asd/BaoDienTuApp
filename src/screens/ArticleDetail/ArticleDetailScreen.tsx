@@ -3,6 +3,7 @@ import {
   StyleSheet,
   View,
   Text,
+  Image,
   ScrollView,
   TouchableOpacity,
   ActivityIndicator,
@@ -45,6 +46,13 @@ import {
   estimateSpeechMinutes,
 } from './speechText';
 
+const HTML_IGNORED_STYLES: NonNullable<
+  React.ComponentProps<typeof RenderHtml>['ignoredStyles']
+> = ['fontSize', 'lineHeight'];
+const HTML_IGNORED_IMAGE_TAGS = ['img'];
+const HTML_IGNORED_NO_TAGS: string[] = [];
+const MIN_OFFLINE_ACTION_FEEDBACK_MS = 450;
+
 export default function ArticleDetailScreen({ route, navigation }: any) {
   const { articleId, articleType, isOffline = false } = route.params;
   const { width } = useWindowDimensions();
@@ -60,7 +68,6 @@ export default function ArticleDetailScreen({ route, navigation }: any) {
     toggleBookmark,
     user,
     wifiOnlyDownloads,
-    offlineIds,
   } = useAppStore();
   const colors = getColors();
   const shell = appTheme[themeMode];
@@ -71,6 +78,9 @@ export default function ArticleDetailScreen({ route, navigation }: any) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isSavedOffline, setIsSavedOffline] = useState(false);
+  const [offlineActionPending, setOfflineActionPending] = useState<
+    'saving' | 'removing' | null
+  >(null);
   const [showVipConfirmation, setShowVipConfirmation] = useState(false);
   const [unlockingVip, setUnlockingVip] = useState(false);
   const [showSpeechHelp, setShowSpeechHelp] = useState(false);
@@ -83,6 +93,7 @@ export default function ArticleDetailScreen({ route, navigation }: any) {
 
   // Reading Progress State
   const [scrollProgress, setScrollProgress] = useState(0);
+  const scrollProgressRef = React.useRef(0);
 
   // Audio Player State
   const [isPlayingAudio, setIsPlayingAudio] = useState(false);
@@ -307,7 +318,9 @@ export default function ArticleDetailScreen({ route, navigation }: any) {
           setError('Không thể tải bản xem trước của bài viết.');
         }
       } else {
-        const isDownloaded = offlineIds.includes(articleId);
+        const isDownloaded = useAppStore
+          .getState()
+          .offlineIds.includes(articleId);
         if (isDownloaded) {
           try {
             const savedArticle = await localDB.getOfflineArticleDetail(articleId);
@@ -329,7 +342,7 @@ export default function ArticleDetailScreen({ route, navigation }: any) {
     } finally {
       setLoading(false);
     }
-  }, [articleId, articleType, isOffline, loadVipPreview, readFullArticle, offlineIds, showToast]);
+  }, [articleId, articleType, isOffline, loadVipPreview, readFullArticle, showToast]);
 
   const handleConfirmVipRead = useCallback(async () => {
     setUnlockingVip(true);
@@ -357,43 +370,63 @@ export default function ArticleDetailScreen({ route, navigation }: any) {
   }, [loadVipPreview, readFullArticle, showToast]);
 
   const handleToggleOffline = async () => {
-    if (!article) {
+    if (!article || offlineActionPending) {
       return;
     }
 
-    if (isSavedOffline) {
-      const removed = await localDB.deleteArticleOffline(articleId);
-      if (removed) {
-        setIsSavedOffline(false);
-        showToast('Đã xóa bản tải xuống');
-      }
-      return;
-    }
-
-    if (!article.content) {
+    if (!isSavedOffline && !article.content) {
       showToast('Bản xem trước VIP không thể tải xuống');
       return;
     }
 
-    if (wifiOnlyDownloads) {
-      try {
-        const networkState = await Network.getNetworkStateAsync();
-        if (networkState.type !== Network.NetworkStateType.WIFI) {
-          showToast('Hãy kết nối Wi-Fi để tải bài offline');
-          return;
+    setOfflineActionPending(isSavedOffline ? 'removing' : 'saving');
+    const actionStartedAt = Date.now();
+    let completionMessage: string | null = null;
+
+    try {
+      if (isSavedOffline) {
+        const removed = await localDB.deleteArticleOffline(articleId);
+        if (removed) {
+          setIsSavedOffline(false);
+          completionMessage = 'Đã xóa bản tải xuống';
+        } else {
+          completionMessage = 'Không thể xóa bản tải xuống';
         }
-      } catch {
-        showToast('Chưa thể kiểm tra kết nối mạng');
         return;
       }
-    }
 
-    const saved = await localDB.saveArticleOffline(article as Article);
-    if (saved) {
-      setIsSavedOffline(true);
-      showToast('Đã lưu bài để đọc offline');
-    } else {
-      showToast('Không thể lưu bài viết trên thiết bị');
+      if (wifiOnlyDownloads) {
+        try {
+          const networkState = await Network.getNetworkStateAsync();
+          if (networkState.type !== Network.NetworkStateType.WIFI) {
+            completionMessage = 'Hãy kết nối Wi-Fi để tải bài offline';
+            return;
+          }
+        } catch {
+          completionMessage = 'Chưa thể kiểm tra kết nối mạng';
+          return;
+        }
+      }
+
+      const saved = await localDB.saveArticleOffline(article as Article);
+      if (saved) {
+        setIsSavedOffline(true);
+        completionMessage = 'Đã lưu bài để đọc offline';
+      } else {
+        completionMessage = 'Không thể lưu bài viết trên thiết bị';
+      }
+    } finally {
+      const remainingFeedbackTime =
+        MIN_OFFLINE_ACTION_FEEDBACK_MS - (Date.now() - actionStartedAt);
+      if (remainingFeedbackTime > 0) {
+        await new Promise<void>((resolve) => {
+          setTimeout(resolve, remainingFeedbackTime);
+        });
+      }
+      setOfflineActionPending(null);
+      if (completionMessage) {
+        showToast(completionMessage);
+      }
     }
   };
 
@@ -506,7 +539,15 @@ export default function ArticleDetailScreen({ route, navigation }: any) {
     const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
     const total = contentSize.height - layoutMeasurement.height;
     if (total > 0) {
-      setScrollProgress(Math.max(0, Math.min(1, contentOffset.y / total)));
+      const nextProgress = Math.max(0, Math.min(1, contentOffset.y / total));
+      if (
+        Math.abs(nextProgress - scrollProgressRef.current) >= 0.01 ||
+        nextProgress === 0 ||
+        nextProgress === 1
+      ) {
+        scrollProgressRef.current = nextProgress;
+        setScrollProgress(nextProgress);
+      }
     }
 
     const currentY = contentOffset.y;
@@ -586,7 +627,23 @@ export default function ArticleDetailScreen({ route, navigation }: any) {
       lineHeight: bodyLineHeight,
       marginBottom: 12,
     },
-  }), [articleFont, colors.text, bodyFontSize, bodyLineHeight]);
+    figure: {
+      marginTop: 8,
+      marginBottom: 22,
+      marginHorizontal: 0,
+    },
+    img: {
+      borderRadius: 8,
+    },
+    figcaption: {
+      fontFamily: F_SANS,
+      color: colors.textMuted,
+      fontSize: 13,
+      lineHeight: 18,
+      fontStyle: 'italic' as const,
+      marginTop: 7,
+    },
+  }), [articleFont, colors.text, colors.textMuted, bodyFontSize, bodyLineHeight]);
 
   const htmlSource = React.useMemo(() => ({
     html: article?.content || article?.previewContent || ''
@@ -627,7 +684,7 @@ export default function ArticleDetailScreen({ route, navigation }: any) {
         : 'Bạn đã dùng hết lượt miễn phí';
   const paywallDescription =
     article.accessMode === 'FREE_QUOTA'
-      ? `Bạn còn ${remainingFreeReads} lượt đọc VIP miễn phí trong tháng này.`
+      ? `Bạn còn ${remainingFreeReads}/3 lượt đọc VIP miễn phí trong tháng này.`
       : article.accessMode === 'LOGIN_REQUIRED'
         ? 'Đăng nhập để sử dụng 3 lượt đọc VIP miễn phí mỗi tháng.'
         : 'Chọn gói thành viên để đọc không giới hạn toàn bộ nội dung VIP.';
@@ -726,6 +783,15 @@ export default function ArticleDetailScreen({ route, navigation }: any) {
             <Text style={styles.metaAuthorName}>{article.authorName || 'Tác giả'}</Text>
           </TouchableOpacity>
 
+          {showImages && Boolean(article.coverImage) && (
+            <Image
+              source={{ uri: article.coverImage }}
+              style={styles.coverImage}
+              resizeMode="cover"
+              accessibilityLabel={`Ảnh bìa bài viết ${article.title}`}
+            />
+          )}
+
           <TouchableOpacity
             activeOpacity={0.78}
             style={[
@@ -798,8 +864,10 @@ export default function ArticleDetailScreen({ route, navigation }: any) {
             source={htmlSource}
             baseStyle={htmlBaseStyle}
             tagsStyles={htmlTagsStyles as any}
-            ignoredStyles={['fontSize', 'lineHeight']}
-            ignoredDomTags={isOffline || !showImages ? ['img'] : []}
+            ignoredStyles={HTML_IGNORED_STYLES}
+            ignoredDomTags={
+              !showImages ? HTML_IGNORED_IMAGE_TAGS : HTML_IGNORED_NO_TAGS
+            }
             enableExperimentalMarginCollapsing
           />
 
@@ -906,6 +974,7 @@ export default function ArticleDetailScreen({ route, navigation }: any) {
           speechParagraphCount={speechParagraphs.length}
           insets={insets}
           isSavedOffline={isSavedOffline}
+          offlineActionPending={offlineActionPending}
           handleToggleOffline={handleToggleOffline}
         />
       )}
@@ -913,8 +982,8 @@ export default function ArticleDetailScreen({ route, navigation }: any) {
       <AppActionSheet
         visible={showVipConfirmation}
         eyebrow="BÀI VIẾT VIP"
-        title="Dùng 1 lượt đọc miễn phí?"
-        description={`Bạn còn ${remainingFreeReads} lượt trong tháng này. Sau khi mở bài, bạn sẽ còn ${Math.max(0, remainingFreeReads - 1)} lượt.`}
+        title="Dùng 1 lượt VIP tháng này?"
+        description={`Bạn còn ${remainingFreeReads}/3 lượt đọc VIP miễn phí. Sau khi mở bài, bạn sẽ còn ${Math.max(0, remainingFreeReads - 1)}/3 lượt. Bài đã mở có thể xem lại mà không bị trừ thêm.`}
         primaryLabel="Xác nhận đọc"
         secondaryLabel="Để sau"
         tone="vip"
@@ -1000,6 +1069,13 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     color: C.ink,
+  },
+  coverImage: {
+    width: '100%',
+    aspectRatio: 16 / 9,
+    marginBottom: 20,
+    borderRadius: 8,
+    backgroundColor: appTheme.light.appSurfaceMuted,
   },
   listenButton: {
     minHeight: 64,
